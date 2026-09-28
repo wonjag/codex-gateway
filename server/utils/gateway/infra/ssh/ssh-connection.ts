@@ -471,7 +471,7 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
           }
 
           hostMfaManager
-            .requestMfa(mfaUserId, host.id, host.name, instructions, prompts)
+            .requestMfa(mfaUserId, host, instructions, prompts)
             .then((answers) => {
               if (this.clientTokens.get(key) !== token) {
                 finish([]);

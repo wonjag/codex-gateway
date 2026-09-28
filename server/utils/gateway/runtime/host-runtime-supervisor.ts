@@ -96,6 +96,7 @@ class HostRuntimeSupervisor {
       activeHostIds.add(host.id);
       this.upsertHost(userId, host);
     }
+    hostMfaManager.pruneHosts(userId, activeHostIds);
 
     for (const [key, slot] of this.slots) {
       if (slot.userId === userId && !activeHostIds.has(slot.hostId)) {
@@ -110,12 +111,18 @@ class HostRuntimeSupervisor {
     if (existing) {
       const update = updateHostRuntimeSlot(existing, host);
       if (!update.changedHost) {
+        const requiresMfa = hostMfaManager.restoreHost(userId, host);
+        if (requiresMfa && !existing.connected && !existing.connecting) {
+          this.publishMfaRequired(existing);
+        }
         this.scheduleExistingSlotIfNeeded(existing);
         return;
       }
       this.removeSlot(key, existing);
       const slot = createHostRuntimeSlot(userId, host);
       this.slots.set(key, slot);
+      const requiresMfa = hostMfaManager.restoreHost(userId, host);
+      if (requiresMfa) this.publishMfaRequired(slot);
       const replacedConnection = existing.connectPromise;
       if (replacedConnection !== null) {
         // A changed Host reuses the same userId:hostId registry key. Let the old generation finish
@@ -132,7 +139,10 @@ class HostRuntimeSupervisor {
 
     const slot = createHostRuntimeSlot(userId, host);
     this.slots.set(key, slot);
-    if (!hostMfaManager.isMfaHost(userId, host.id)) {
+    const requiresMfa = hostMfaManager.restoreHost(userId, host);
+    if (requiresMfa) {
+      this.publishMfaRequired(slot);
+    } else {
       this.scheduleConnect(slot, 0);
     }
   }
@@ -174,17 +184,12 @@ class HostRuntimeSupervisor {
     if (!slot || slot.connecting || slot.timer) {
       return;
     }
+    slot.connected = false;
     if (hostMfaManager.isMfaHost(event.userId, event.hostId)) {
       // Reconnecting a keyboard-interactive Host without a user present would immediately block
       // the shared runtime on another verification prompt. Keep it disconnected and expose the
       // explicit sidebar action that starts a fresh connection attempt when the user is ready.
-      runWithGatewayUser(event.userId, () => {
-        hostLifecycleBus.emit({
-          hostId: event.hostId,
-          status: "mfaRequired",
-          message: "SSH 连接已断开，请手动输入 MFA 验证码后重新连接",
-        });
-      });
+      this.publishMfaRequired(slot);
       return;
     }
     this.scheduleConnect(slot, retryDelay(slot.retryCount));
@@ -221,11 +226,13 @@ class HostRuntimeSupervisor {
       await connection;
       if (!this.isCurrent(slot, generation)) return;
       slot.retryCount = 0;
+      slot.connected = true;
     } catch (error) {
       if (!this.isCurrent(slot, generation)) {
         return;
       }
       slot.retryCount += 1;
+      slot.connected = false;
       // Release the failed attempt before publishing the actionable state. The lifecycle event is
       // delivered synchronously to the browser; if the user clicks MFA immediately, the next
       // connect must not be rejected by the old attempt's `connecting` flag.
@@ -272,7 +279,19 @@ class HostRuntimeSupervisor {
   }
 
   private isRefreshable(slot: HostRuntimeSlot) {
-    return this.started && !slot.connecting && !slot.timer;
+    // A stale-thread scan is a read on an existing runtime, never a reason to create SSH.
+    // In particular, an MFA host awaiting explicit user action must remain disconnected.
+    return this.started && slot.connected && !slot.connecting && !slot.timer;
+  }
+
+  private publishMfaRequired(slot: HostRuntimeSlot) {
+    runWithGatewayUser(slot.userId, () => {
+      hostLifecycleBus.emit({
+        hostId: slot.hostId,
+        status: "mfaRequired",
+        message: "SSH 连接已断开，请手动输入 MFA 验证码后重新连接",
+      });
+    });
   }
 
   private slotKey(userId: number, hostId: number) {
