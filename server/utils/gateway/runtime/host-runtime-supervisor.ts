@@ -203,6 +203,7 @@ class HostRuntimeSupervisor {
     // that this is an MFA host yet. This explicit retry covers both cases; requestMfa() publishes
     // the prompt if the remote server asks for MFA during this attempt.
     slot.retryCount = 0;
+    hostMfaManager.permitConnection(userId, hostId);
     this.scheduleConnect(slot, 0);
   }
 
@@ -242,6 +243,7 @@ class HostRuntimeSupervisor {
         this.scheduleConnect(slot, retryDelay(slot.retryCount));
       }
     } finally {
+      hostMfaManager.revokeConnectionPermit(slot.userId, slot.hostId);
       // A replaced slot may already own a newer connection attempt. Never clear state belonging
       // to that newer generation while an older promise is unwinding.
       this.releaseConnectAttempt(slot, connection);
