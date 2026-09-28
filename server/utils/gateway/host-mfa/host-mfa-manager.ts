@@ -21,9 +21,23 @@ export class HostMfaManager {
   /** Tracks which hosts are currently awaiting MFA so the SSH connection can signal "mfaRequired" */
   private awaitedHosts = new Set<string>();
   private detectedHosts = new Set<string>();
+  private connectionPermits = new Set<string>();
 
   isMfaHost(userId: number, hostId: number): boolean {
     return this.detectedHosts.has(`${userId}:${hostId}`);
+  }
+
+  canStartConnection(userId: number, hostId: number): boolean {
+    const key = `${userId}:${hostId}`;
+    return !this.detectedHosts.has(key) || this.connectionPermits.has(key);
+  }
+
+  permitConnection(userId: number, hostId: number) {
+    this.connectionPermits.add(`${userId}:${hostId}`);
+  }
+
+  revokeConnectionPermit(userId: number, hostId: number) {
+    this.connectionPermits.delete(`${userId}:${hostId}`);
   }
 
   restoreHost(userId: number, host: HostRecord) {
@@ -147,5 +161,6 @@ export class HostMfaManager {
     }
     this.awaitedHosts.delete(key);
     this.detectedHosts.delete(key);
+    this.connectionPermits.delete(key);
   }
 }
