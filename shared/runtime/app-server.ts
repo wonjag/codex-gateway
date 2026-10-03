@@ -113,15 +113,19 @@ const threadItemSchema = z
   })
   .loose();
 
+// Follow the App Server wire enum, not internal CodexErrorDetails variants. In 0.160.0 the new
+// ContentFilter detail maps to "other" upstream; adding it here would invent a protocol value.
 const codexErrorInfoSchema = z.union([
   z.enum([
     "contextWindowExceeded",
     "sessionBudgetExceeded",
     "usageLimitExceeded",
     "rateLimitExceeded",
+    "flexUnavailable",
     "serverOverloaded",
     "cyberPolicy",
     "misalignmentPolicyViolation",
+    "tooManyDenials",
     "internalServerError",
     "unauthorized",
     "badRequest",

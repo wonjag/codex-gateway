@@ -17,7 +17,7 @@ import type { ThreadController } from "./thread-controller";
 import { runtimeLog } from "./runtime-log";
 import { threadRuntimeEvents } from "./thread-runtime-events";
 import type { ThreadOpenSnapshot } from "./types";
-import { applyMaterializedEventsToOpenSnapshot } from "./open-snapshot-events";
+import { preserveCanonicalUserMessagesInOpenSnapshot } from "./open-snapshot-events";
 import { currentGatewayUserId } from "../state/memory";
 import { parseThreadReadResult, parseThreadStartResult } from "~~/shared/runtime/app-server";
 import { gatewayThreadFromAppServer } from "../protocol/gateway-thread";
@@ -330,6 +330,7 @@ export class ThreadOpenService {
     const threadId = thread.id;
     const resolvedProjectId = resolveProjectId(host.id, projectId, thread.cwd);
     threadMetadataStore.record(host.id, resolvedProjectId, thread);
+    const previousSnapshot = threadSnapshotStore.get(host.id, threadId);
     // The per-thread store retains at most 500 events. Reapply the complete retained window so a
     // summary refresh cannot erase an accepted steer merely because it is older than the first
     // 200 high-frequency output deltas.
@@ -347,7 +348,11 @@ export class ThreadOpenService {
       threadSettings,
       tokenUsage: latestTokenUsageFromEvents(recentEvents),
     };
-    const snapshot = applyMaterializedEventsToOpenSnapshot(baseSnapshot, recentEvents);
+    const snapshot = preserveCanonicalUserMessagesInOpenSnapshot(
+      baseSnapshot,
+      previousSnapshot,
+      recentEvents,
+    );
     // During browser activation the controller is created before the cold snapshot exists. Route
     // the write through it so sub-agent classification and active-main-thread handoff state are
     // initialized together with the cache. Non-browser reconciliation has no activation controller

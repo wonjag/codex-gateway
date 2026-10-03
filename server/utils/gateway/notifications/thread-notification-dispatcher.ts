@@ -2,6 +2,7 @@ import { match } from "ts-pattern";
 import type { GatewayEvent } from "~~/shared/types";
 import { notificationCenter } from "./notification-center";
 import {
+  threadAsyncUserQuestionNotification,
   threadGoalCompletedNotification,
   threadTurnCompletedNotification,
   threadUserInputRequestedNotification,
@@ -18,6 +19,9 @@ export function dispatchThreadRuntimeNotification(
   options: { resolveGoal?: ThreadGoalResolver; resolveThread?: ThreadMetadataResolver } = {},
 ) {
   match(event.event.type)
+    .with("timeline.item.upsert", () => {
+      void dispatchAsyncUserQuestion(event, options.resolveThread);
+    })
     .with("thread.goal.updated", () => {
       void dispatchGoalUpdated(event, options.resolveThread);
     })
@@ -42,8 +46,18 @@ async function dispatchUserInputRequested(
   if (!(await shouldNotifyMainThread(event, resolveThread))) {
     return;
   }
-  if (!pendingServerRequests.isPending(event)) return;
-  dispatchIfPresent(threadUserInputRequestedNotification(event));
+  if (pendingServerRequests.isPending(event)) {
+    dispatchIfPresent(threadUserInputRequestedNotification(event));
+  }
+}
+
+async function dispatchAsyncUserQuestion(
+  event: GatewayEvent,
+  resolveThread: ThreadMetadataResolver | undefined,
+) {
+  const notification = threadAsyncUserQuestionNotification(event);
+  if (notification === null || !(await shouldNotifyMainThread(event, resolveThread))) return;
+  dispatchIfPresent(notification);
 }
 
 async function dispatchGoalUpdated(
