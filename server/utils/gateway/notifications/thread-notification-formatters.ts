@@ -72,6 +72,29 @@ export function threadUserInputRequestedNotification(event: GatewayEvent): Serve
   };
 }
 
+export function threadAsyncUserQuestionNotification(
+  event: GatewayEvent,
+): ServerNotification | null {
+  const canonicalEvent = event.event;
+  if (canonicalEvent.type !== "timeline.item.upsert") return null;
+  const item = recordFromUnknown(canonicalEvent.item);
+  if (item?.type !== "agentMessage" || item.delivery !== "async") return null;
+  const itemId = idFromUnknown(item.id);
+  const questions = Array.isArray(item.questions) ? item.questions : [];
+  const firstQuestion = recordFromUnknown(questions[0]);
+  const question = firstNonEmptyString([stringFromUnknown(firstQuestion?.title)]);
+  if (itemId === null || question === null) return null;
+
+  const questionCount = questions.length > 1 ? `（共 ${questions.length} 个问题）` : "";
+  return {
+    key: `thread-async-user-question:${event.hostId}:${event.threadId}:${itemId}`,
+    title: `${threadTitle(event.hostId, event.threadId)} · 等待回答`,
+    body: `${hostTitle(event.hostId)} 上的 Agent 正在等待你的回答${questionCount}：${question}`,
+    group: "Codex Gateway",
+    target: notificationTarget(event),
+  };
+}
+
 export function isTerminalGoalStatus(status: ThreadGoalStatus) {
   return status !== "active" && status !== "paused";
 }

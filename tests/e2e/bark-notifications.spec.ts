@@ -125,21 +125,24 @@ test("plan-mode user questions render and notify through Sonner and Bark", async
     timeout: 30_000,
   });
 
-  const question = `请选择 E2E 方案 ${Date.now()}`;
+  const question = "E2E 方案";
   await page
     .getByPlaceholder("输入后续修改要求")
     .fill(
-      `先不要制定计划或回复正文。立即调用 request_user_input_async，只询问“${question}”，提供“方案 A”和“方案 B”两个选项。`,
+      `先不要制定计划或回复正文。立即调用 request_user_input_async，只询问“${question}”，提供“方案 A”和“方案 B”两个选项。问题文字必须完整使用给定内容。`,
     );
   await page.getByTestId("send-turn-button").click();
 
   const requestCard = page.getByTestId("chat-scroll-area").getByText(question, { exact: true });
-  await expect(requestCard).toBeVisible({ timeout: AGENT_OUTPUT_TIMEOUT_MS });
+  const requestToast = page.locator("[data-sonner-toast]").filter({ hasText: "等待回答" });
+  await Promise.all([
+    expect(requestCard).toBeVisible({ timeout: AGENT_OUTPUT_TIMEOUT_MS }),
+    expect(requestToast).toBeVisible({ timeout: AGENT_OUTPUT_TIMEOUT_MS }),
+  ]);
   // The app-server keeps an async question in both agentMessage.text and
   // agentMessage.questions. The UI must expose only the structured card, not
   // render the protocol summary as a second plain-text question.
   await expect(requestCard).toHaveCount(1);
-  await expect(page.locator("[data-sonner-toast]").filter({ hasText: "等待回答" })).toBeVisible();
   await expect.poll(async () => (await bark.readRequests()).length, { timeout: 30_000 }).toBe(1);
   const request = (await bark.readRequests())[0];
   expect(request?.title).toContain("等待回答");

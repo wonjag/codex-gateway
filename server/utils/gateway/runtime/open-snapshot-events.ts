@@ -6,7 +6,7 @@ import {
   appServerThreadStatusFromUnknown,
   threadSettingsFromAppServer,
 } from "~~/shared/runtime/app-server";
-import { idFromUnknown } from "~~/shared/utils/records";
+import { idFromUnknown, recordFromUnknown } from "~~/shared/utils/records";
 import type { AgentEvent } from "~~/shared/agent/events";
 import type { GatewayEvent } from "~~/shared/types";
 import { applyCanonicalEventToHistory } from "~~/shared/thread-history/canonical-events";
@@ -49,6 +49,36 @@ export function applyMaterializedEventsToOpenSnapshot(
     if (!isMaterializedEvent(gatewayEvent.event)) return current;
     return applyEventToOpenSnapshot(current, gatewayEvent.event) ?? current;
   }, snapshot);
+}
+
+export function preserveCanonicalUserMessagesInOpenSnapshot(
+  snapshot: ThreadOpenSnapshot,
+  previousSnapshot: ThreadOpenSnapshot | null,
+  events: readonly GatewayEvent[],
+) {
+  // App Server's bounded timeline page can omit an earlier user row in a long Turn. Preserve the
+  // row already accepted into Gateway's canonical snapshot before replacing that page; doing this
+  // once at the snapshot boundary avoids another App Server read and keeps every browser aligned.
+  const retainedTurnIds = new Set(snapshot.history.thread.turns.map((turn) => turn.id));
+  const previousMessages =
+    previousSnapshot?.history.thread.turns.flatMap((turn) =>
+      retainedTurnIds.has(turn.id)
+        ? turn.items.flatMap((item) =>
+            item.type === "userMessage" ? [{ ...item, turnId: turn.id }] : [],
+          )
+        : [],
+    ) ?? [];
+  const retainedMessages = events.flatMap((gatewayEvent) => {
+    if (gatewayEvent.event.type !== "timeline.item.upsert") return [];
+    const item = recordFromUnknown(gatewayEvent.event.item);
+    return item?.type === "userMessage" && retainedTurnIds.has(String(item.turnId)) ? [item] : [];
+  });
+  const withPreviousMessages = [...previousMessages, ...retainedMessages].reduce(
+    (current, item) =>
+      applyEventToOpenSnapshot(current, { type: "timeline.item.upsert", item }) ?? current,
+    snapshot,
+  );
+  return applyMaterializedEventsToOpenSnapshot(withPreviousMessages, events);
 }
 
 function isMaterializedEvent(event: AgentEvent) {

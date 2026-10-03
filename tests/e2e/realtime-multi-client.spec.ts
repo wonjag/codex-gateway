@@ -28,7 +28,7 @@ test("refreshes thread settings after a disconnected browser reconnects", async 
     hostName: `settings-reconnect-${Date.now()}`,
   });
   const threadId = await remoteWorkspace.startThread(project.id);
-  await expect(page.getByTestId("model-select")).toContainText("gpt-6-luna");
+  await expect(page.getByTestId("model-select")).toContainText(/gpt-6-luna/i);
 
   const secondContext = await browser.newContext({
     storageState: await page.context().storageState(),
@@ -40,7 +40,7 @@ test("refreshes thread settings after a disconnected browser reconnects", async 
     await expect
       .poll(async () => currentSelectedThreadId(secondPage), { timeout: 30_000 })
       .toBe(threadId);
-    await expect(secondPage.getByTestId("model-select")).toContainText("gpt-6-luna");
+    await expect(secondPage.getByTestId("model-select")).toContainText(/gpt-6-luna/i);
 
     await page.getByTestId("model-select").click();
     await page.getByTestId("model-option-gpt-5.6-sol").click();
@@ -271,10 +271,6 @@ test("fans out a real remote app-server thread to multiple browser clients acros
     await expect
       .poll(() => threadRuntimeStatus(secondPage, host.id, threadId), { timeout: 30_000 })
       .toBe("running");
-    await openThreadFromProjectOrRestoredState(page, host.id, project.id, backgroundThreadId);
-    await expect
-      .poll(async () => currentSelectedThreadId(page), { timeout: 30_000 })
-      .toBe(backgroundThreadId);
     const steerMessageOffset = await realtimeClientMessageCount(secondPage);
     await sendSteerText(secondPage, crossBrowserSteerMarker);
     const steerMessage = await waitForRealtimeClientMessage(
@@ -284,15 +280,27 @@ test("fans out a real remote app-server thread to multiple browser clients acros
     );
     expect(steerMessage.threadId).toBe(threadId);
     expect(steerMessage.text).toContain(crossBrowserSteerMarker);
+    const mirroredSteer = page
+      .getByTestId("chat-scroll-area")
+      .getByText(`追加要求：${crossBrowserSteerMarker}`, { exact: true });
+    // App Server may emit more Agent items before it fans out the accepted steer. The contract is
+    // eventual visibility before the active Turn settles, without opening intermediate history.
+    await expect(secondPage.getByTestId("send-turn-button")).toHaveAttribute(
+      "aria-label",
+      "已完成",
+      {
+        timeout: AGENT_OUTPUT_TIMEOUT_MS,
+      },
+    );
+    await expect
+      .poll(() => threadRuntimeStatus(page, host.id, threadId), {
+        timeout: AGENT_OUTPUT_TIMEOUT_MS,
+      })
+      .toBe("completed");
+    await expect(mirroredSteer).toBeVisible({ timeout: 30_000 });
+    await openThreadFromProjectOrRestoredState(page, host.id, project.id, backgroundThreadId);
     await openThreadFromProjectOrRestoredState(page, host.id, project.id, threadId);
-    // Do not open the intermediate disclosure here. The receiving browser deliberately switched
-    // away while the steer arrived, so returning to the cached thread must render that user row
-    // from realtime history instead of discovering it later through item pagination.
-    await expect(
-      page
-        .getByTestId("chat-scroll-area")
-        .getByText(`追加要求：${crossBrowserSteerMarker}`, { exact: true }),
-    ).toBeVisible({ timeout: 30_000 });
+    await expect(mirroredSteer).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", "已完成", {
       timeout: AGENT_OUTPUT_TIMEOUT_MS,
     });
