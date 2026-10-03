@@ -1,7 +1,5 @@
-import { isThreadActiveStatus } from "~~/shared/thread-runtime-status";
 import type { ThreadTimelineItem, ThreadTimelineTurn } from "~~/shared/types";
 import { isThreadPlanItem } from "@/utils/thread-plan";
-import { recordFromUnknown } from "~~/shared/utils/records";
 
 export interface ThreadTurnSections {
   items: ThreadTimelineItem[];
@@ -9,7 +7,6 @@ export interface ThreadTurnSections {
   finalItems: ThreadTimelineItem[];
   finalAgentIndex: number;
   hasFinalAnswer: boolean;
-  turnIsActive: boolean;
 }
 
 export function buildThreadTurnSections(
@@ -24,7 +21,6 @@ export function buildThreadTurnSections(
     items,
     finalAgentIndex,
     hasFinalAnswer,
-    turnIsActive: isTurnActive(turn, items),
     intermediateItems: items.filter(
       (item, index) => (!hasFinalAnswer || index < finalAgentIndex) && isIntermediateItem(item),
     ),
@@ -35,14 +31,6 @@ export function buildThreadTurnSections(
 export function itemKey(item: ThreadTimelineItem, section: string, index: number) {
   const id = typeof item.id === "string" && item.id !== "" ? item.id : item.clientId;
   return typeof id === "string" && id !== "" ? id : `${section}-${index}-${item.type}`;
-}
-
-export function statusValue(status: unknown) {
-  return typeof status === "string" ? status : recordFromUnknown(status)?.type;
-}
-
-export function itemStatusSignature(items: ThreadTimelineItem[]) {
-  return items.map((item) => statusValue(item.status));
 }
 
 function findFinalAgentIndex(
@@ -79,12 +67,6 @@ function isLeadTranscriptItem(item: ThreadTimelineItem) {
 
 function isIntermediateItem(item: ThreadTimelineItem) {
   return !isLeadTranscriptItem(item);
-}
-
-function isTurnActive(turn: ThreadTimelineTurn, items: ThreadTimelineItem[]) {
-  return (
-    isThreadActiveStatus(turn.status) || items.some((item) => isThreadActiveStatus(item?.status))
-  );
 }
 
 function findLastIndex<T>(list: T[], predicate: (item: T) => boolean) {
