@@ -112,6 +112,36 @@ test("fans out a real remote app-server thread to multiple browser clients acros
   const steerMarker = `E2E steer ${Date.now()}`;
   const steerDisplayText = `追加要求：${steerMarker}`;
   const steerMessageOffset = await realtimeClientMessageCount(page);
+  const processToggle = firstIntermediateStepsToggle(page);
+  await revealVirtualizedChatLocator(page, processToggle);
+  await expect(processToggle).toHaveAttribute("data-state", "open");
+  // Observe the real disclosure while the user sends steer. A final-state assertion alone misses
+  // a brief automatic close that the next Agent item reopens; do not manually reopen to mask it.
+  const disclosure = await page.evaluateHandle(
+    ({ hostId, threadId, turnId }) => {
+      const root = document.querySelector('[data-testid="chat-scroll-area"]');
+      if (root === null) throw new Error("Missing chat timeline");
+      let unexpectedClosures = 0;
+      const observer = new MutationObserver(() => {
+        if (window.__codexGatewayE2e?.runtime.statusFor(hostId, threadId) !== "running") return;
+        const row = Array.from(root.querySelectorAll<HTMLElement>("[data-row-key]")).find(
+          (element) =>
+            element.dataset.rowKey?.endsWith(`:turn-${turnId}:intermediate-header`) ?? false,
+        );
+        if ((row?.querySelector('button[data-state="closed"]') ?? null) !== null) {
+          unexpectedClosures += 1;
+        }
+      });
+      observer.observe(root, { subtree: true, childList: true, attributes: true });
+      return {
+        stop() {
+          observer.disconnect();
+          return unexpectedClosures;
+        },
+      };
+    },
+    { hostId: host.id, threadId, turnId: await activeRemoteTurnId(page) },
+  );
   await sendSteerText(page, steerMarker);
   const steerMessage = await waitForRealtimeClientMessage(page, "turn.steer", steerMessageOffset);
   expect(steerMessage.threadId).toBe(threadId);
@@ -121,14 +151,8 @@ test("fans out a real remote app-server thread to multiple browser clients acros
   ).toBeVisible({
     timeout: 30_000,
   });
-  const processToggle = firstIntermediateStepsToggle(page);
-  if (
-    (await processToggle.isVisible().catch(() => false)) &&
-    (await processToggle.getAttribute("data-state")) !== "open"
-  ) {
-    await processToggle.click();
-    await expect(processToggle).toHaveAttribute("data-state", "open");
-  }
+  expect(await disclosure.evaluate((state) => state.stop())).toBe(0);
+  await disclosure.dispose();
   await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", "已完成", {
     timeout: AGENT_OUTPUT_TIMEOUT_MS,
   });

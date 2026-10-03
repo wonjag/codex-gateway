@@ -15,6 +15,7 @@ import { useIntermediateStepsDisclosure } from "@/components/thread/useIntermedi
 import { provideFilePreviewContext } from "@/composables/files/useFilePreviewContext";
 import { useGatewayComposerStore } from "@/stores/gateway-composer";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
+import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
 import { collaborationModeFromThreadSettings } from "@/utils/thread-collaboration-mode";
 
 const props = defineProps<{
@@ -37,10 +38,16 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const composer = useGatewayComposerStore();
 const threadTurns = useGatewayThreadTurnsStore();
+const runtime = useGatewayThreadRuntimeStore();
 const userDetachedFromLatest = ref(false);
 const projectId = computed(() => props.projectId ?? null);
 const planModeActive = computed(() => selectedThreadMode() === "plan");
 const threadIsRunning = computed(() => props.threadStatus === "running");
+const activeTurnId = computed(() =>
+  props.hostId === null || props.threadId === null
+    ? null
+    : runtime.threadRuntimeProjection(props.hostId, props.threadId).activeTurnId,
+);
 const autoCollapseIntermediate = computed(() => !userDetachedFromLatest.value);
 
 provideFilePreviewContext({
@@ -57,16 +64,14 @@ const turnStates = computed(() =>
   })),
 );
 const disclosureTurns = computed(() =>
-  turnStates.value.map(({ turn, sections }) => ({
+  turnStates.value.map(({ turn }) => ({
     id: turn.id,
-    status: turn.status,
-    items: sections.items,
-    turnIsActive: sections.turnIsActive,
   })),
 );
 const { isIntermediateOpen, setIntermediateOpen } = useIntermediateStepsDisclosure({
   turns: disclosureTurns,
   threadIsRunning,
+  activeTurnId,
   autoCollapseIntermediate,
 });
 function isTurnItemsLoading(turnId: string) {

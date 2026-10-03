@@ -295,8 +295,12 @@ export async function completeTurnWithFinalAgentMessage(
   },
 ) {
   await page.evaluate((input) => {
-    const views = window.__codexGatewayE2e?.views;
-    if (!views) throw new Error("Gateway E2E driver is unavailable");
+    const driver = window.__codexGatewayE2e;
+    if (!driver) throw new Error("Gateway E2E driver is unavailable");
+    const { views, runtime, navigation } = driver;
+    const hostId = navigation.selectedHostId;
+    const threadId = navigation.selectedThreadId;
+    if (hostId === null || threadId === null) throw new Error("Missing selected thread");
     const history = views.history;
     const turn = history?.thread.turns[0];
     if (!history || !turn) throw new Error("Gateway thread history is unavailable");
@@ -316,6 +320,9 @@ export async function completeTurnWithFinalAgentMessage(
     views.setHistory({
       thread: { ...history.thread, turns: [...history.thread.turns] },
     });
+    // These scroll scenarios finish the entire Agent loop, not one Turn in a continuing Goal.
+    // Model the official idle status too: item/Turn completion alone must not end a running thread.
+    runtime.setThreadStatus(hostId, threadId, "completed");
   }, input);
 }
 

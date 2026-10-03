@@ -1,17 +1,13 @@
 import { ref, watch, type ComputedRef } from "vue";
-import { itemStatusSignature, statusValue } from "./thread-turn-sections";
-import type { ThreadTimelineItem } from "~~/shared/types";
 
 interface IntermediateDisclosureTurn {
   id: string;
-  status: unknown;
-  items: ThreadTimelineItem[];
-  turnIsActive: boolean;
 }
 
 export function useIntermediateStepsDisclosure(input: {
   turns: ComputedRef<IntermediateDisclosureTurn[]>;
   threadIsRunning: ComputedRef<boolean>;
+  activeTurnId: ComputedRef<string | null>;
   autoCollapseIntermediate: ComputedRef<boolean>;
 }) {
   // A timeline is an accordion, not a set of independent disclosures. Keeping one id prevents
@@ -23,12 +19,9 @@ export function useIntermediateStepsDisclosure(input: {
   watch(
     () => [
       input.threadIsRunning.value,
+      input.activeTurnId.value,
       input.autoCollapseIntermediate.value,
-      ...input.turns.value.flatMap((turn) => [
-        turn.id,
-        statusValue(turn.status),
-        ...itemStatusSignature(turn.items),
-      ]),
+      ...input.turns.value.map((turn) => turn.id),
     ],
     () => {
       const turns = input.turns.value;
@@ -45,11 +38,16 @@ export function useIntermediateStepsDisclosure(input: {
         return;
       }
 
-      const latestActiveTurn = turns.findLast(
-        (turn) => input.threadIsRunning.value && turn.turnIsActive,
-      );
-      if (latestActiveTurn !== undefined) {
-        openTurnId.value = latestActiveTurn.id;
+      if (input.threadIsRunning.value) {
+        // Runtime already owns the authoritative active Turn used by steer/interrupt. A paged
+        // timeline can omit turnStarted, and a pause between items need not contain any running
+        // item. Re-inferring activity here makes an optimistic steer close the accordion when
+        // sending restores bottom-follow, then reopen on the next Agent delta. Keep disclosure
+        // policy here, using runtime identity; neither the composer nor item presenters own it.
+        const activeTurnId = input.activeTurnId.value;
+        if (activeTurnId !== null && liveTurnIds.has(activeTurnId)) {
+          openTurnId.value = activeTurnId;
+        }
       } else if (input.autoCollapseIntermediate.value) {
         openTurnId.value = null;
       }
