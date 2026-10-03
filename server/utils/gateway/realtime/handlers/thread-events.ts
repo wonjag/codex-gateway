@@ -7,7 +7,6 @@ import { threadRuntimeEvents } from "../../runtime/thread-runtime-events";
 import { gatewayEventStore } from "../../state/gateway-events";
 import { hostStore } from "../../state/hosts";
 import { bindGatewayUser } from "../../state/memory";
-import { isThreadActiveStatus } from "~~/shared/thread-runtime-status";
 import {
   runPeerScoped,
   sendRealtimePeerMessage,
@@ -85,15 +84,10 @@ export async function activateThread(
       eventEpoch,
       ...result,
     });
-    subscribeThreadEvents(
-      peer,
-      host,
-      input.threadId,
-      lastEventId,
-      eventEpoch,
-      result.runtimeStatus === "running",
-      { lease: activationLease, controller: activationController },
-    );
+    subscribeThreadEvents(peer, host, input.threadId, lastEventId, eventEpoch, {
+      lease: activationLease,
+      controller: activationController,
+    });
     leaseTransferred = true;
     if (result.threadSettings === null || result.threadSettings === undefined) {
       // A cache hit can predate settings hydration. Resolve only that metadata after the snapshot;
@@ -169,7 +163,6 @@ function subscribeThreadEvents(
   threadId: string,
   afterId: number,
   afterEpoch?: string,
-  initiallyRunning = threadBroker.isThreadRunning(host.id, threadId),
   activation?: {
     lease: ThreadSubscriptionLease;
     controller: Awaited<ThreadSubscriptionLease["ready"]>;
@@ -187,6 +180,7 @@ function subscribeThreadEvents(
   const epochMismatch = afterEpoch === undefined ? afterId > 0 : afterEpoch !== eventEpoch;
   const replayGap = epochMismatch || gatewayEventStore.hasReplayGap(hostId, threadId, afterId);
   if (replayGap) {
+    activation?.lease.release();
     // Do not attach live delivery until the client activates an authoritative snapshot. Sending
     // live events while that snapshot is in flight lets the later snapshot overwrite newer
     // projections and can also restore the stale pre-gap cursor.
@@ -230,52 +224,18 @@ function subscribeThreadEvents(
 
   let replaying = true;
   const liveQueue: GatewayEvent[] = [];
-  let upstreamLease: ThreadSubscriptionLease | null = null;
-  let pendingActivation = activation;
-
-  const ensureUpstreamSubscription = () => {
-    if (upstreamLease !== null) return;
-    if (pendingActivation !== undefined) {
-      const retained = pendingActivation;
-      pendingActivation = undefined;
-      upstreamLease = retained.lease;
-      void runPeerScoped(peer, () =>
-        retained.controller.ensureSubscribed().catch((error: unknown) => {
-          recordGatewayError(hostId, threadId, error, "Failed to subscribe thread upstream");
-          if (upstreamLease === retained.lease) releaseUpstreamSubscription();
-        }),
-      );
-      return;
-    }
-    const lease = threadBroker.retainUpstreamSubscription(host, threadId, "browser");
-    upstreamLease = lease;
-    void runPeerScoped(peer, () =>
-      lease.ready.catch((error: unknown) => {
-        recordGatewayError(hostId, threadId, error, "Failed to subscribe thread upstream");
-        if (upstreamLease === lease) releaseUpstreamSubscription();
-      }),
-    );
-  };
-
-  const releaseUpstreamSubscription = () => {
-    upstreamLease?.release();
-    upstreamLease = null;
-  };
-
-  if (initiallyRunning) ensureUpstreamSubscription();
-  else {
-    // A cold resume subscribes as part of opening the thread. Idle threads do not need a retained
-    // upstream subscription, so release the activation lease after the snapshot and let
-    // the global thread/started broadcast reacquire one when work begins.
-    pendingActivation?.lease.release();
-    pendingActivation = undefined;
-  }
+  // A browser is subscribing to the conversation, not just its current Turn. Releasing its
+  // upstream lease on idle misses the next Turn's user item while an async thread/resume catches
+  // up with the active-status broadcast. Keep the shared subscription for the browser's lifetime;
+  // explicit unsubscribe, cache eviction, and WebSocket close release it through this one owner.
+  // Monitor-only subscriptions still release on idle; they have no browser reading the thread.
+  const upstreamLease =
+    activation?.lease ?? threadBroker.retainUpstreamSubscription(host, threadId, "browser");
 
   const unsubscribe = threadRuntimeEvents.subscribe(
     hostId,
     threadId,
     bindGatewayUser((event) => {
-      updateBrowserUpstreamLease(event, ensureUpstreamSubscription, releaseUpstreamSubscription);
       if (replaying) {
         liveQueue.push(event);
         return;
@@ -285,14 +245,21 @@ function subscribeThreadEvents(
   );
   releaseSubscription = () => {
     unsubscribe();
-    pendingActivation?.lease.release();
-    pendingActivation = undefined;
-    releaseUpstreamSubscription();
+    upstreamLease.release();
     if (state.threadUnsubscribers.get(key) === releaseSubscription) {
       state.threadUnsubscribers.delete(key);
     }
   };
   state.threadUnsubscribers.set(key, releaseSubscription);
+  void runPeerScoped(peer, () =>
+    (activation === undefined
+      ? upstreamLease.ready
+      : activation.controller.ensureSubscribed()
+    ).catch((error: unknown) => {
+      recordGatewayError(hostId, threadId, error, "Failed to subscribe thread upstream");
+      if (state.threadUnsubscribers.get(key) === releaseSubscription) releaseSubscription();
+    }),
+  );
 
   // Each thread cache is bounded to 500 events. Replay the complete retained window rather than
   // silently stopping at an arbitrary first 200; selected views refresh their authoritative
@@ -312,24 +279,4 @@ function recordGatewayError(hostId: number, threadId: string, error: unknown, fa
     type: "gateway.error",
     message: error instanceof Error ? error.message : fallback,
   });
-}
-
-function updateBrowserUpstreamLease(event: GatewayEvent, retain: () => void, release: () => void) {
-  if (event.event.type === "turn.started") {
-    retain();
-    return;
-  }
-  if (event.event.type === "turn.completed") {
-    // The app-server emits turn/completed before it finishes persisting a first-turn rollout and
-    // before the authoritative thread status becomes idle. Keep the lease until
-    // thread/status/changed confirms the thread is no longer active so final persistence and Goal
-    // continuation notifications remain on the same uninterrupted subscription.
-    return;
-  }
-  if (event.event.type !== "thread.status.changed") return;
-  if (isThreadActiveStatus(event.event.status)) {
-    retain();
-    return;
-  }
-  release();
 }
