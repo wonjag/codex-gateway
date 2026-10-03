@@ -10,6 +10,7 @@ export interface HostRuntimeSlot {
   retryCount: number;
   timer: ReturnType<typeof setTimeout> | null;
   connecting: boolean;
+  connected: boolean;
   connectPromise: Promise<void> | null;
 }
 
@@ -23,6 +24,7 @@ export function createHostRuntimeSlot(userId: number, host: HostRecord): HostRun
     retryCount: 0,
     timer: null,
     connecting: false,
+    connected: false,
     connectPromise: null,
   };
 }

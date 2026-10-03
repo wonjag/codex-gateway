@@ -65,6 +65,14 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
     const existing = this.clients.get(key);
     if (existing) return this.notifyReady(existing, host);
 
+    const userId = currentGatewayUserId();
+    // All Gateway features converge on this pool. Enforcing the explicit MFA action here prevents
+    // file, model, Git, thread, and scheduled requests from creating a transport behind the user's
+    // back while still allowing them to reuse an authenticated connection already in the pool.
+    if (userId !== null && !hostMfaManager.canStartConnection(userId, host.id)) {
+      throw new Error("MFA host requires an explicit connection request");
+    }
+
     const token = Symbol(key);
     this.clientTokens.set(key, token);
     const promise = withSshConnectRetries(host, () =>
@@ -471,7 +479,7 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
           }
 
           hostMfaManager
-            .requestMfa(mfaUserId, host.id, host.name, instructions, prompts)
+            .requestMfa(mfaUserId, host, instructions, prompts)
             .then((answers) => {
               if (this.clientTokens.get(key) !== token) {
                 finish([]);

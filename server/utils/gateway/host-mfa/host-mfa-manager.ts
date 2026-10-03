@@ -1,4 +1,6 @@
 import { HostMfaEventBus } from "./host-mfa-events";
+import type { HostRecord } from "~~/shared/types";
+import { hostAuthCapabilityStore } from "./host-auth-capability-store";
 
 interface MfaPendingRequest {
   userId: number;
@@ -19,9 +21,37 @@ export class HostMfaManager {
   /** Tracks which hosts are currently awaiting MFA so the SSH connection can signal "mfaRequired" */
   private awaitedHosts = new Set<string>();
   private detectedHosts = new Set<string>();
+  private connectionPermits = new Set<string>();
 
   isMfaHost(userId: number, hostId: number): boolean {
     return this.detectedHosts.has(`${userId}:${hostId}`);
+  }
+
+  canStartConnection(userId: number, hostId: number): boolean {
+    const key = `${userId}:${hostId}`;
+    return !this.detectedHosts.has(key) || this.connectionPermits.has(key);
+  }
+
+  permitConnection(userId: number, hostId: number) {
+    this.connectionPermits.add(`${userId}:${hostId}`);
+  }
+
+  revokeConnectionPermit(userId: number, hostId: number) {
+    this.connectionPermits.delete(`${userId}:${hostId}`);
+  }
+
+  restoreHost(userId: number, host: HostRecord) {
+    const key = `${userId}:${host.id}`;
+    if (hostAuthCapabilityStore.requiresKeyboardInteractive(userId, host)) {
+      this.detectedHosts.add(key);
+      return true;
+    }
+    this.detectedHosts.delete(key);
+    return false;
+  }
+
+  pruneHosts(userId: number, activeHostIds: ReadonlySet<number>) {
+    hostAuthCapabilityStore.pruneHosts(userId, activeHostIds);
   }
 
   isWaitingMfa(userId: number, hostId: number): boolean {
@@ -51,14 +81,15 @@ export class HostMfaManager {
    */
   requestMfa(
     userId: number,
-    hostId: number,
-    name: string,
+    host: HostRecord,
     instructions: string,
     prompts: Array<{ prompt: string; echo?: boolean }>,
   ): Promise<string[]> {
     return new Promise((resolve, reject) => {
+      const hostId = host.id;
       const key = `${userId}:${hostId}`;
       this.detectedHosts.add(key);
+      hostAuthCapabilityStore.markKeyboardInteractive(userId, host);
       // Cancel any previous pending MFA for this host
       const existing = this.pending.get(key);
       if (existing !== undefined) {
@@ -77,7 +108,7 @@ export class HostMfaManager {
       this.pending.set(key, {
         userId,
         hostId,
-        name,
+        name: host.name,
         instructions,
         prompts,
         resolve,
@@ -87,7 +118,7 @@ export class HostMfaManager {
       this.events.publish(userId, {
         type: "request",
         hostId,
-        name,
+        name: host.name,
         instructions,
         prompts,
       });
@@ -130,5 +161,6 @@ export class HostMfaManager {
     }
     this.awaitedHosts.delete(key);
     this.detectedHosts.delete(key);
+    this.connectionPermits.delete(key);
   }
 }
