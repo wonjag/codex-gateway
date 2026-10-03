@@ -418,6 +418,14 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
     key: string,
     token: symbol,
   ) {
+    const assertCurrentConnection = () => {
+      if (this.clientTokens.get(key) !== token) {
+        throw new Error("SSH connection attempt was superseded by Host reconfiguration");
+      }
+    };
+    // The pool entry owns the whole retry sequence, not an individual socket. A Host removed
+    // during backoff must not start another connection or publish a stale MFA challenge.
+    assertCurrentConnection();
     const sock = resolved.proxy
       ? await createProxySocket({
           proxy: resolved.proxy,
@@ -425,6 +433,10 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
           targetPort: host.port ?? resolved.port,
         })
       : undefined;
+    if (this.clientTokens.get(key) !== token) {
+      sock?.destroy();
+      assertCurrentConnection();
+    }
     const client = new Client();
     return await new Promise<Client>((resolve, reject) => {
       let settled = false;
@@ -433,12 +445,14 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
           return;
         }
         settled = true;
-        if (mfaUserId !== null) {
+        if (mfaUserId !== null && this.clientTokens.get(key) === token) {
           // The SSH client can time out while waiting for the user's MFA answer. Remove the
           // pending request with the transport so a later code cannot target a dead socket.
           hostMfaManager.cancelMfa(mfaUserId, host.id);
         }
-        this.deleteClientIfCurrent(key, token);
+        // Keep the shared Promise and token while withSshConnectRetries owns the sequence.
+        // Deleting them here invalidates every later attempt's MFA answer and lets other callers
+        // create competing transports. The outer catch evicts the entry after the final failure.
         sock?.destroy();
         client.end();
         reject(error);
@@ -454,15 +468,17 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
             return;
           }
           settled = true;
+          // Only an authenticated transport owns pool eviction on disconnect. Failed attempts
+          // can emit end/close after a retry has started; those events must not evict that retry.
+          client.once("end", () => this.deleteClientIfCurrent(key, token));
+          client.once("close", () => this.deleteClientIfCurrent(key, token));
           resolve(client);
         })
         .on("error", fail)
-        .on("end", () => this.deleteClientIfCurrent(key, token))
-        .on("close", () => {
-          this.deleteClientIfCurrent(key, token);
-          fail(new Error(SSH_CONNECTION_CLOSED_BEFORE_READY));
-        })
+        .on("end", () => fail(new Error(SSH_CONNECTION_CLOSED_BEFORE_READY)))
+        .on("close", () => fail(new Error(SSH_CONNECTION_CLOSED_BEFORE_READY)))
         .on("keyboard-interactive", (name, instructions, _lang, prompts, finish) => {
+          if (settled || this.clientTokens.get(key) !== token) return;
           // PAM may follow the actual verification-code challenge with an informational
           // keyboard-interactive round that contains no prompts. It requires an empty response,
           // not another user interaction; publishing it as MFA would leave the Host falsely
@@ -481,15 +497,12 @@ export class SshConnectionPool extends EventEmitter<SshConnectionPoolEvents> {
           hostMfaManager
             .requestMfa(mfaUserId, host, instructions, prompts)
             .then((answers) => {
-              if (this.clientTokens.get(key) !== token) {
-                finish([]);
-                return;
-              }
+              if (settled || this.clientTokens.get(key) !== token) return;
               finish(answers);
             })
             .catch(() => {
               // MFA timed out or was canceled — give empty answers so auth fails
-              finish([]);
+              if (!settled && this.clientTokens.get(key) === token) finish([]);
             });
         })
         .connect({

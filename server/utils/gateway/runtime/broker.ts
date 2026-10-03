@@ -248,10 +248,6 @@ class ThreadBroker {
     return this.registry.retainActivationController(host, threadId);
   }
 
-  isThreadRunning(hostId: number, threadId: string) {
-    return this.openService.isThreadRunning(hostId, threadId);
-  }
-
   async restoreRetainedSubscriptions(host: HostRecord) {
     await this.registry.restoreRetainedSubscriptions(host);
   }

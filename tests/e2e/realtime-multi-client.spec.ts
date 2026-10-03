@@ -305,6 +305,31 @@ test("fans out a real remote app-server thread to multiple browser clients acros
       timeout: AGENT_OUTPUT_TIMEOUT_MS,
     });
 
+    // Keep both browsers on the same idle conversation, then start the next Turn through the
+    // composer. The receiving browser must show its user row without opening intermediate history
+    // or switching routes; steer coverage alone cannot detect an upstream unsubscribe at idle.
+    await expect
+      .poll(async () => activeRemoteTurnId(secondPage), { timeout: AGENT_OUTPUT_TIMEOUT_MS })
+      .toBe("");
+    const nextTurnMarker = `E2E idle-to-next-turn ${Date.now()}`;
+    const nextTurnPrompt = `请只回复：${nextTurnMarker}`;
+    await secondPage.getByPlaceholder("输入后续修改要求").fill(nextTurnPrompt);
+    await secondPage.getByTestId("send-turn-button").click();
+    await expect(
+      page.getByTestId("chat-scroll-area").getByText(nextTurnPrompt, { exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(
+      secondPage.getByTestId("chat-scroll-area").getByText(nextTurnMarker, { exact: true }),
+    ).toBeVisible({ timeout: AGENT_OUTPUT_TIMEOUT_MS });
+    await expect(secondPage.getByTestId("send-turn-button")).toHaveAttribute(
+      "aria-label",
+      "已完成",
+      { timeout: AGENT_OUTPUT_TIMEOUT_MS },
+    );
+    await expect
+      .poll(async () => activeRemoteTurnId(page), { timeout: AGENT_OUTPUT_TIMEOUT_MS })
+      .toBe("");
+
     await page.getByTestId(`thread-button-${threadId}`).click({ button: "right" });
     await page.getByRole("menuitem", { name: /置顶会话|Pin thread/ }).click();
     await expect(page.getByTestId(`pinned-thread-button-${threadId}`)).toBeVisible();
