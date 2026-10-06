@@ -109,10 +109,12 @@ if [ -n "$dependency_workspace" ]; then
       exit 2
     fi
     module_target="/app/${package_path#./}/node_modules"
+    module_source="$dependency_workspace/$package_path/node_modules"
     if [ "$package_path" = . ]; then
       module_target=/app/node_modules
+      module_source="$dependency_workspace/node_modules"
     fi
-    dependency_mount_args+=(--mount "type=bind,source=$dependency_workspace/$package_path/node_modules,target=$module_target")
+    dependency_mount_args+=(--mount "type=bind,source=$module_source,target=$module_target")
   done
   printf 'Reusing finished Node24 dependency workspace: %s\n' "$dependency_workspace"
 fi
