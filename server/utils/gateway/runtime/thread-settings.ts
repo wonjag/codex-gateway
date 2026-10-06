@@ -36,6 +36,7 @@ export class ThreadSettingsService {
     const params: Record<string, unknown> = { threadId };
     if ("model" in input) params.model = input.model;
     if ("effort" in input) params.effort = input.effort;
+    if ("summary" in input) params.summary = input.summary;
     if ("approvalPolicy" in input) params.approvalPolicy = input.approvalPolicy;
     if (input.collaborationMode !== null && input.collaborationMode !== undefined) {
       params.collaborationMode = buildAppServerCollaborationMode(input.collaborationMode);
@@ -49,11 +50,12 @@ export class ThreadSettingsService {
     host: HostRecord,
     threadId: string,
     turnId: string,
-    input: Pick<ThreadSettingsState, "model" | "effort">,
+    input: Pick<ThreadSettingsState, "model" | "effort" | "summary">,
   ) {
     const params: Record<string, unknown> = { threadId, turnId };
     if ("model" in input) params.model = input.model;
     if ("effort" in input) params.effort = input.effort;
+    if ("summary" in input) params.summary = input.summary;
     return this.registry.withScopedSubscription(host, threadId, (controller) =>
       controller.enqueue(() =>
         controller.client.request(

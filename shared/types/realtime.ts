@@ -7,7 +7,7 @@ import type {
   ThreadOpenResult,
   ThreadRuntimeStatusUpdate,
 } from "./thread";
-import type { ApprovalPolicy, ReasoningEffort } from "./thread";
+import type { ApprovalPolicy, ReasoningEffort, ReasoningSummary } from "./thread";
 import type { TerminalOpenTarget, TerminalSessionSnapshot } from "./terminal";
 import type {
   BrowserPreviewResourceFailure,
@@ -136,6 +136,7 @@ export type RealtimeClientMessage =
       provider?: AgentProviderId;
       model?: string | null;
       effort?: ReasoningEffort | null;
+      summary?: ReasoningSummary | null;
       approvalPolicy?: ApprovalPolicy | null;
     }
   | {
@@ -165,6 +166,7 @@ export type RealtimeClientMessage =
       cwd?: string | null;
       model?: string | null;
       effort?: ReasoningEffort | null;
+      summary?: ReasoningSummary | null;
       approvalPolicy?: ApprovalPolicy | null;
       collaborationMode?: ComposerTurnOptions["collaborationMode"];
       images?: ComposerTurnOptions["images"];
@@ -198,6 +200,7 @@ export type RealtimeClientMessage =
       turnId: string;
       model?: string | null;
       effort?: ReasoningEffort | null;
+      summary?: ReasoningSummary | null;
     }
   | {
       type: "mcp.status.list";

@@ -107,7 +107,7 @@ class ThreadBroker {
     host: HostRecord,
     threadId: string,
     turnId: string,
-    input: Pick<ThreadSettingsState, "model" | "effort">,
+    input: Pick<ThreadSettingsState, "model" | "effort" | "summary">,
   ) {
     return this.settings.updateTurnSettings(host, threadId, turnId, input);
   }
