@@ -144,6 +144,9 @@ docker run --rm --memory 2g --memory-swap 2g \
   bash -lc 'set -euo pipefail
     corepack enable
     pnpm install --frozen-lockfile --prod=false --store-dir /cache/pnpm-store --package-import-method copy
+    # Reusing node_modules can make pnpm skip lifecycle scripts, but this fresh source export
+    # still needs its workspace package outputs and generated Nuxt types.
+    pnpm run postinstall
     pnpm exec nuxt build --logLevel silent'
 
 test -f "$build_workspace/.output/server/index.mjs"
