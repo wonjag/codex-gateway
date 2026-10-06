@@ -166,6 +166,7 @@ export function handleTurnQueue(request: Extract<RealtimeClientMessage, { type: 
       }
     });
     function stop() {
+      if (stopped) return;
       stopped = true;
       if (timer) clearTimeout(timer);
       unsubscribe();

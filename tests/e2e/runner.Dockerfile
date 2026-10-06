@@ -1,10 +1,17 @@
 FROM node:24-bookworm-slim
 
+# Slim images omit CA roots; bootstrap them so optional HTTPS apt mirrors work.
+COPY --from=node:22-bookworm /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-RUN apt-get update \
+ARG E2E_DEBIAN_MIRROR
+RUN if [ -n "$E2E_DEBIAN_MIRROR" ]; then \
+      sed -i "s|http://deb.debian.org|${E2E_DEBIAN_MIRROR%/}|g" /etc/apt/sources.list.d/debian.sources; \
+    fi \
+  && apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ git openssh-client ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 

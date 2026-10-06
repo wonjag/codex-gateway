@@ -14,18 +14,29 @@ RUN mkdir -p /tmp/codex-node \
   && npm install -g --prefix /tmp/codex-node @openai/codex@${CODEX_CLI_VERSION}
 
 FROM debian:bookworm-slim AS current-codex-runtime
+COPY --from=preview-dependencies /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 ARG CURRENT_CODEX_CLI_VERSION
 ARG CODEX_RELEASE_TARGET=x86_64-unknown-linux-musl
+ARG E2E_DEBIAN_MIRROR
 RUN test -n "${CURRENT_CODEX_CLI_VERSION}" \
+  && if [ -n "$E2E_DEBIAN_MIRROR" ]; then \
+       sed -i "s|http://deb.debian.org|${E2E_DEBIAN_MIRROR%/}|g" /etc/apt/sources.list.d/debian.sources; \
+     fi \
   && apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl \
   && rm -rf /var/lib/apt/lists/* \
   && asset="codex-package-${CODEX_RELEASE_TARGET}.tar.gz" \
-  && curl -fsSL "https://releases.openai.com/codex/releases/${CURRENT_CODEX_CLI_VERSION}/${asset}" \
-    -o /tmp/codex-package.tar.gz \
-  && curl -fsSL "https://releases.openai.com/codex/releases/${CURRENT_CODEX_CLI_VERSION}/codex-package_SHA256SUMS" \
-    -o /tmp/codex-package_SHA256SUMS \
+  && downloaded=0 \
+  && for release_base in \
+       "https://releases.openai.com/codex/releases/${CURRENT_CODEX_CLI_VERSION}" \
+       "https://github.com/openai/codex/releases/download/rust-v${CURRENT_CODEX_CLI_VERSION}"; do \
+       if curl -fsSL --connect-timeout 30 --max-time 600 "$release_base/$asset" -o /tmp/codex-package.tar.gz \
+         && curl -fsSL --connect-timeout 30 --max-time 60 "$release_base/codex-package_SHA256SUMS" -o /tmp/codex-package_SHA256SUMS; then \
+         downloaded=1; break; \
+       fi; \
+     done \
+  && test "$downloaded" = 1 \
   && expected="$(awk -v asset="$asset" '$2 == asset && length($1) == 64 { print tolower($1); found = 1 } END { exit found ? 0 : 1 }' /tmp/codex-package_SHA256SUMS)" \
   && printf '%s  %s\n' "$expected" /tmp/codex-package.tar.gz | sha256sum -c - \
   && mkdir -p /opt/codex-standalone \
@@ -33,11 +44,16 @@ RUN test -n "${CURRENT_CODEX_CLI_VERSION}" \
   && rm -f /tmp/codex-package.tar.gz /tmp/codex-package_SHA256SUMS
 
 FROM debian:bookworm-slim AS ssh-base
+COPY --from=preview-dependencies /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 ARG E2E_UID=1000
 ARG E2E_GID=1000
+ARG E2E_DEBIAN_MIRROR
 
-RUN apt-get update \
+RUN if [ -n "$E2E_DEBIAN_MIRROR" ]; then \
+      sed -i "s|http://deb.debian.org|${E2E_DEBIAN_MIRROR%/}|g" /etc/apt/sources.list.d/debian.sources; \
+    fi \
+  && apt-get update \
   && apt-get install -y --no-install-recommends openssh-server git ca-certificates sudo tmux procps \
   && rm -rf /var/lib/apt/lists/*
 

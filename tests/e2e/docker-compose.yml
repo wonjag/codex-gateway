@@ -20,6 +20,7 @@ services:
       context: ./docker
       target: empty-runtime
       args:
+        E2E_DEBIAN_MIRROR: ${E2E_DEBIAN_MIRROR:-}
         E2E_UID: ${E2E_UID:-12345}
         E2E_GID: ${E2E_GID:-12345}
     <<: *ssh-target
@@ -29,6 +30,7 @@ services:
       context: ./docker
       target: legacy-node
       args:
+        E2E_DEBIAN_MIRROR: ${E2E_DEBIAN_MIRROR:-}
         E2E_UID: ${E2E_UID:-12345}
         E2E_GID: ${E2E_GID:-12345}
     <<: *ssh-target
@@ -38,6 +40,7 @@ services:
       context: ./docker
       target: npm-codex
       args:
+        E2E_DEBIAN_MIRROR: ${E2E_DEBIAN_MIRROR:-}
         CODEX_CLI_VERSION: ${E2E_CODEX_CLI_VERSION:-0.140.0}
         E2E_UID: ${E2E_UID:-12345}
         E2E_GID: ${E2E_GID:-12345}
@@ -48,6 +51,7 @@ services:
       context: ./docker
       target: mfa-runtime
       args:
+        E2E_DEBIAN_MIRROR: ${E2E_DEBIAN_MIRROR:-}
         CURRENT_CODEX_CLI_VERSION: ${E2E_SUPPORTED_CODEX_VERSION}
         E2E_UID: ${E2E_UID:-12345}
         E2E_GID: ${E2E_GID:-12345}
@@ -59,6 +63,8 @@ services:
     build:
       context: ../..
       dockerfile: tests/e2e/runner.Dockerfile
+      args:
+        E2E_DEBIAN_MIRROR: ${E2E_DEBIAN_MIRROR:-}
     environment:
       # Keep enough cgroup headroom for Rolldown/Nitro native allocations while allowing the
       # JavaScript heap to finish the production bundle. The container remains capped at 2 GiB.
