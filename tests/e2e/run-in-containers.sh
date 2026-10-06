@@ -111,6 +111,8 @@ if [ -n "${E2E_NAS_ROOT:-}" ]; then
     exit 2
   fi
   mkdir -p "$E2E_NAS_RUN_DIR"/{workspace,build-output,gateway-tmp}
+  # Managed Docker bind proxies require host directories to exist before container creation.
+  mkdir -p "$project_dir/test-results"
   # Keep SQLite WAL and small runtime state on a local filesystem. A bind mount also works
   # with platform Docker proxies that do not support named volumes.
   local_root="${E2E_LOCAL_ROOT:-$HOME/.cache/codex-gateway-e2e}"
