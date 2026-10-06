@@ -81,11 +81,10 @@ test("queued prompts survive reload, synchronize across pages, and run as a late
     .poll(
       () =>
         page.evaluate(() =>
-          window.__codexGatewayE2e?.views.events.some(
-            (event) =>
-              event.event.type === "timeline.item.upsert" &&
-              event.event.item.type === "commandExecution" &&
-              event.event.item.status === "inProgress",
+          window.__codexGatewayE2e?.views.history?.thread.turns.some((turn) =>
+            turn.items.some(
+              (item) => item.type === "commandExecution" && item.status === "inProgress",
+            ),
           ),
         ),
       { timeout: 180_000 },
