@@ -3,8 +3,8 @@ x-build-proxy: &build-proxy
   HTTPS_PROXY: ${HTTPS_PROXY:-}
   http_proxy: ${HTTP_PROXY:-}
   https_proxy: ${HTTPS_PROXY:-}
-  NO_PROXY: ${NO_PROXY:-}
-  no_proxy: ${NO_PROXY:-}
+  NO_PROXY: ${NO_PROXY:-},localhost,127.0.0.1,::1,.nip.io,gateway-under-test,bark-target,ssh-target,ssh-target-mfa,ssh-target-legacy-node,ssh-target-npm-codex
+  no_proxy: ${NO_PROXY:-},localhost,127.0.0.1,::1,.nip.io,gateway-under-test,bark-target,ssh-target,ssh-target-mfa,ssh-target-legacy-node,ssh-target-npm-codex
 
 x-ssh-target: &ssh-target
   environment:
@@ -99,6 +99,8 @@ services:
       - ssh-target-mfa
       - bark-target
     environment:
+      <<: *build-proxy
+      NODE_USE_ENV_PROXY: "1"
       HOST: 0.0.0.0
       PORT: "3100"
       CODEX_GATEWAY_CONFIG_SECRET: e2e-config-secret

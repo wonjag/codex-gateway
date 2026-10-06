@@ -13,19 +13,11 @@ RUN mkdir -p /tmp/codex-node \
   && cp -a /usr/local/. /tmp/codex-node/ \
   && npm install -g --prefix /tmp/codex-node @openai/codex@${CODEX_CLI_VERSION}
 
-FROM debian:bookworm-slim AS current-codex-runtime
-COPY --from=preview-dependencies /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+FROM node:22-bookworm AS current-codex-runtime
 
 ARG CURRENT_CODEX_CLI_VERSION
 ARG CODEX_RELEASE_TARGET=x86_64-unknown-linux-musl
-ARG E2E_DEBIAN_MIRROR
 RUN test -n "${CURRENT_CODEX_CLI_VERSION}" \
-  && if [ -n "$E2E_DEBIAN_MIRROR" ]; then \
-       sed -i "s|http://deb.debian.org|${E2E_DEBIAN_MIRROR%/}|g" /etc/apt/sources.list.d/debian.sources; \
-     fi \
-  && apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl \
-  && rm -rf /var/lib/apt/lists/* \
   && asset="codex-package-${CODEX_RELEASE_TARGET}.tar.gz" \
   && downloaded=0 \
   && for release_base in \
