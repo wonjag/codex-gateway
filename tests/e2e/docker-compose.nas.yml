@@ -13,6 +13,20 @@ x-nas-environment: &nas-environment
   no_proxy: ${NO_PROXY:-},localhost,127.0.0.1,::1,.nip.io,gateway-under-test,bark-target,ssh-target,ssh-target-mfa,ssh-target-legacy-node,ssh-target-npm-codex
 
 services:
+  # SSH scenarios use their own writable local workspace. File/Git scenarios create their own
+  # fixtures, so the remote codex user does not need access to the private NAS source checkout.
+  ssh-target:
+    volumes: !override []
+
+  ssh-target-legacy-node:
+    volumes: !override []
+
+  ssh-target-npm-codex:
+    volumes: !override []
+
+  ssh-target-mfa:
+    volumes: !override []
+
   bark-target:
     command: ["node", "/e2e-source/tests/e2e/bark-server.ts"]
     volumes: !override
@@ -59,6 +73,8 @@ services:
     environment:
       <<: *nas-environment
       E2E_HOST_CONNECT_TIMEOUT_MS: ${E2E_HOST_CONNECT_TIMEOUT_MS:-120000}
+      E2E_REMOTE_PROJECT_PATH: ${E2E_NAS_REMOTE_PROJECT_PATH:-/home/codex/e2e-workspace}
+      E2E_PREPARE_REMOTE_PROJECT_DIR: "1"
     volumes:
       - ${E2E_LOCAL_RUN_DIR:?}/data:/workspace/codex-gateway/.data-e2e
       - ${E2E_LOCAL_RUN_DIR:?}/bark-requests:/bark-requests

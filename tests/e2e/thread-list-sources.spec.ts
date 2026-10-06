@@ -43,7 +43,8 @@ test("main thread pagination excludes children while project discovery retains e
                   thread_spawn: {
                     parent_thread_id: mainId,
                     depth: 1,
-                    agent_path: `/root/child-${index}`,
+                    // Native AgentPath segments allow lowercase letters, digits, and underscores.
+                    agent_path: `/root/child_${index}`,
                     agent_nickname: null,
                     agent_role: null,
                   },
