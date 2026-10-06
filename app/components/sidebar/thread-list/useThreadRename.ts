@@ -1,3 +1,4 @@
+import { useGatewayRealtimeStore } from "@/stores/gateway-realtime";
 import { storeToRefs } from "pinia";
 import { computed, ref } from "vue";
 import { useGatewayPinnedThreads } from "@/stores/gateway-config";
@@ -63,6 +64,28 @@ export function useThreadRename() {
     }
   }
 
+  async function generateTitle() {
+    const target = renameTarget.value;
+    if (!target || submitting.value) return;
+    submitting.value = true;
+    try {
+      const result = await useGatewayRealtimeStore().request(
+        (requestId) => ({
+          type: "thread.title.generate",
+          requestId,
+          ...target,
+        }),
+        { errorMode: "notify", timeoutMs: 120_000 },
+      );
+      if (result.type === "thread.title.generated" && renameTarget.value === target)
+        renameValue.value = result.title;
+    } catch {
+      /* The shared realtime error handler displays the failure. */
+    } finally {
+      submitting.value = false;
+    }
+  }
+
   function cancelRename() {
     renameTarget.value = null;
     renameValue.value = "";
@@ -74,5 +97,6 @@ export function useThreadRename() {
     submitting,
     startRename,
     submitRename,
+    generateTitle,
   };
 }

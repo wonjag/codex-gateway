@@ -1,5 +1,5 @@
 import { defineStore, skipHydrate } from "pinia";
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { useAccountLocalStorage } from "@/composables/storage/useAccountLocalStorage";
 import type { GatewayThread } from "~~/shared/types";
 import type { GatewayRouteSelection } from "@/stores/gateway/route-state";
@@ -22,6 +22,16 @@ export const useGatewayNavigationStore = defineStore("gateway-navigation", () =>
   const selectedProjectId = ref<number | null>(null);
   const selectedThreadId = ref<string | null>(null);
   const openingPinnedThreadKey = ref<string | null>(null);
+  // Clear the old project synchronously, including route restoration and rapid A/B/A switches.
+  const listGeneration = ref(0);
+  watch(
+    [selectedHostId, selectedProjectId],
+    () => {
+      threads.value = [];
+      listGeneration.value += 1;
+    },
+    { flush: "sync" },
+  );
   const actions = {
     ...createThreadListActions(),
     ...createThreadPinningActions(),
@@ -42,6 +52,7 @@ export const useGatewayNavigationStore = defineStore("gateway-navigation", () =>
   return {
     lastOpenThread: skipHydrate(lastOpenThread),
     threads,
+    listGeneration,
     selectedHostId,
     selectedProjectId,
     selectedThreadId,

@@ -42,7 +42,7 @@ export class ThreadProjectDiscoveryService {
   schedule(
     userId: number,
     host: HostWithSecret,
-    firstPage: ThreadListPage,
+    firstPage: ThreadListPage | null,
     params: Record<string, unknown>,
     generation: number,
   ) {
@@ -50,16 +50,17 @@ export class ThreadProjectDiscoveryService {
     if (
       !this.isCurrent(key, generation) ||
       this.pending.has(key) ||
-      firstPage.nextCursor === null ||
-      firstPage.nextCursor === undefined ||
-      firstPage.nextCursor === ""
+      (firstPage !== null &&
+        (firstPage.nextCursor === null ||
+          firstPage.nextCursor === undefined ||
+          firstPage.nextCursor === ""))
     )
       return;
     const discover = bindGatewayUser(async () => {
-      let cursor = firstPage.nextCursor ?? null;
+      let cursor = firstPage?.nextCursor ?? null;
       const seen = new Set<string>();
-      while (cursor !== null && !seen.has(cursor)) {
-        seen.add(cursor);
+      do {
+        if (cursor !== null) seen.add(cursor);
         const page = await threadBroker.listThreads(host, {
           ...params,
           cursor,
@@ -68,7 +69,7 @@ export class ThreadProjectDiscoveryService {
         if (!this.isCurrent(key, generation)) return;
         this.indexPage(host.id, page);
         cursor = page.nextCursor ?? null;
-      }
+      } while (cursor !== null && !seen.has(cursor));
     });
     const request = discover()
       .catch((error) => {

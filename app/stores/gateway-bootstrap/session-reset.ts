@@ -1,3 +1,4 @@
+import { useGatewayTurnQueueStore } from "@/stores/gateway-turn-queue";
 import { useGatewayFileWorkspaceStore } from "@/stores/file-workspace";
 import { useGatewayBrowserStore } from "@/stores/gateway-browser";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
@@ -31,6 +32,7 @@ export function resetGatewayClientSession() {
   useGatewayCatalogStore().resetState();
   useGatewayConfigStore().resetState();
   useGatewayNavigationStore().resetState();
+  useGatewayTurnQueueStore().resetState();
   useGatewayThreadViewStore().resetState();
   useGatewayThreadTurnsStore().resetState();
   useGatewayThreadRuntimeStore().resetState();

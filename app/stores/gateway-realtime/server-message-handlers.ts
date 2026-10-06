@@ -1,3 +1,4 @@
+import { useGatewayTurnQueueStore } from "@/stores/gateway-turn-queue";
 import { match, P } from "ts-pattern";
 import type { RealtimeServerMessage } from "~~/shared/types";
 import { STALE_THREAD_CURSOR_ERROR_CODE } from "~~/shared/gateway-errors";
@@ -33,6 +34,11 @@ export function createRealtimeServerMessageDispatcher(ctx: RealtimeServerMessage
 
   return (message: RealtimeServerMessage) =>
     match(message)
+      .with({ type: "turn.queue.snapshot" }, (message) => {
+        useGatewayTurnQueueStore().receive(message);
+        if (message.requestId) ctx.resolveRequest(message);
+      })
+      .with({ type: "thread.title.generated" }, (message) => ctx.resolveRequest(message))
       .with({ type: "thread.event" }, thread["thread.event"])
       .with({ type: "thread.runtime.snapshot" }, thread["thread.runtime.snapshot"])
       .with({ type: "thread.runtime.updated" }, thread["thread.runtime.updated"])

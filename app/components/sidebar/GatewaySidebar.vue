@@ -205,6 +205,7 @@ async function openHostMonitor(hostId: number) {
       v-model="threadRename.renameValue.value"
       :submitting="threadRename.submitting.value"
       @submit="threadRename.submitRename"
+      @generate="threadRename.generateTitle"
     />
 
     <HostMfaDialog

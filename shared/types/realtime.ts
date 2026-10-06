@@ -140,6 +140,22 @@ export type RealtimeClientMessage =
       approvalPolicy?: ApprovalPolicy | null;
     }
   | {
+      type: "turn.queue";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      action: "list" | "enqueue" | "edit" | "cancel" | "resume";
+      id?: string;
+      text?: string;
+      input?: unknown;
+    }
+  | {
+      type: "thread.title.generate";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+    }
+  | {
       type: "turn.start";
       requestId: string;
       hostId: number;
@@ -462,6 +478,18 @@ export type RealtimeServerMessage =
       hostId: number;
       threadId: string;
       threadSettings: ThreadSettingsState;
+    }
+  | {
+      type: "turn.queue.snapshot";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      entries: import("./turn-queue").QueuedTurn[];
+    }
+  | {
+      type: "thread.title.generated";
+      requestId: string;
+      title: string;
     }
   | {
       type: "turn.start.accepted";

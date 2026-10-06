@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { writeFile } from "node:fs/promises";
 import { expect, test } from "./fixtures/remote-workspace";
 import { openApp, reloadApp } from "./helpers/app";
 import { chatViewportBottomDistance, revealVirtualizedChatLocator } from "./helpers/scroll";
@@ -10,7 +11,12 @@ import {
   realtimeClientMessageCount,
   waitForRealtimeClientMessage,
 } from "./helpers/realtime-socket-probe";
-import { sendSteerText, sendTextTurn } from "./helpers/remote-codex";
+import {
+  execRemoteSsh,
+  sendSteerText,
+  sendTextTurn,
+  type RemoteCodexEnv,
+} from "./helpers/remote-codex";
 import { AGENT_OUTPUT_TIMEOUT_MS } from "./helpers/timeouts";
 
 test.describe.configure({ mode: "serial" });
@@ -28,7 +34,11 @@ test("refreshes thread settings after a disconnected browser reconnects", async 
     hostName: `settings-reconnect-${Date.now()}`,
   });
   const threadId = await remoteWorkspace.startThread(project.id);
-  await expect(page.getByTestId("model-select")).toContainText(/gpt-6-luna/i);
+  const initialModel = remoteWorkspace.remote.testModel ?? "gpt-6-luna";
+  const changedModel = initialModel === "gpt-5.6-sol" ? "gpt-6-luna" : "gpt-5.6-sol";
+  await expect(page.getByTestId("model-select")).toContainText(initialModel, {
+    ignoreCase: true,
+  });
 
   const secondContext = await browser.newContext({
     storageState: await page.context().storageState(),
@@ -40,23 +50,31 @@ test("refreshes thread settings after a disconnected browser reconnects", async 
     await expect
       .poll(async () => currentSelectedThreadId(secondPage), { timeout: 30_000 })
       .toBe(threadId);
-    await expect(secondPage.getByTestId("model-select")).toContainText(/gpt-6-luna/i);
+    await expect(secondPage.getByTestId("model-select")).toContainText(initialModel, {
+      ignoreCase: true,
+    });
 
     await page.getByTestId("model-select").click();
-    await page.getByTestId("model-option-gpt-5.6-sol").click();
+    await page.getByTestId(`model-option-${changedModel}`).click();
     await page.getByTestId("model-selector-close").click();
-    await expect(page.getByTestId("model-select")).toContainText(/gpt-5\.6-sol/i);
+    await expect(page.getByTestId("model-select")).toContainText(changedModel, {
+      ignoreCase: true,
+    });
 
     // Model changes made in another client must be recovered when a user returns to a background
     // tab, not only after its WebSocket reconnects.
     await triggerRealtimeResume(secondPage);
-    await expect(secondPage.getByTestId("model-select")).toContainText(/gpt-5\.6-sol/i);
+    await expect(secondPage.getByTestId("model-select")).toContainText(changedModel, {
+      ignoreCase: true,
+    });
 
     const reconnectMessageOffset = await realtimeClientMessageCount(secondPage);
     await closeRealtimeSockets(secondPage);
     await expect.poll(() => activeRealtimeSocketCount(secondPage), { timeout: 30_000 }).toBe(1);
     await waitForRealtimeClientMessage(secondPage, "thread.subscribe", reconnectMessageOffset);
-    await expect(secondPage.getByTestId("model-select")).toContainText(/gpt-5\.6-sol/i);
+    await expect(secondPage.getByTestId("model-select")).toContainText(changedModel, {
+      ignoreCase: true,
+    });
   } finally {
     await secondContext.close();
   }
@@ -327,13 +345,18 @@ test("fans out a real remote app-server thread to multiple browser clients acros
       .getByText(`追加要求：${crossBrowserSteerMarker}`, { exact: true });
     // App Server may emit more Agent items before it fans out the accepted steer. The contract is
     // eventual visibility before the active Turn settles, without opening intermediate history.
-    await expect(secondPage.getByTestId("send-turn-button")).toHaveAttribute(
-      "aria-label",
-      "已完成",
-      {
-        timeout: AGENT_OUTPUT_TIMEOUT_MS,
-      },
-    );
+    try {
+      await expect(secondPage.getByTestId("send-turn-button")).toHaveAttribute(
+        "aria-label",
+        "已完成",
+        {
+          timeout: AGENT_OUTPUT_TIMEOUT_MS,
+        },
+      );
+    } catch (error) {
+      await captureSteerCompletionFailure([page, secondPage], remote, host.id, threadId);
+      throw error;
+    }
     await expect
       .poll(() => threadRuntimeStatus(page, host.id, threadId), {
         timeout: AGENT_OUTPUT_TIMEOUT_MS,
@@ -623,4 +646,64 @@ async function threadRuntimeStatus(page: Page, hostId: number, threadId: string)
 
 async function inProgressCommandCount(page: Page) {
   return page.getByTestId("command-status-running").count();
+}
+
+async function captureSteerCompletionFailure(
+  pages: Page[],
+  remote: RemoteCodexEnv,
+  hostId: number,
+  threadId: string,
+) {
+  // Read only this test's state before fixture cleanup. Keep event metadata, never credentials,
+  // prompts, model text, shell output, or the contents of other threads.
+  const observations = await Promise.allSettled([
+    ...pages.map((page) =>
+      page.evaluate(
+        ({ hostId, threadId }) => {
+          const driver = window.__codexGatewayE2e;
+          return {
+            selectedThreadId: driver?.navigation.selectedThreadId,
+            runtimeStatus: driver?.runtime.statusFor(hostId, threadId),
+            activeTurnId: driver?.runtime.activeTurnIdsByThreadKey[`${hostId}:${threadId}`],
+            turns: driver?.views.history?.thread.turns.map((turn) => ({
+              id: turn.id,
+              status: turn.status,
+              items: turn.items.slice(-8).map((item) => ({ type: item.type, status: item.status })),
+            })),
+          };
+        },
+        { hostId, threadId },
+      ),
+    ),
+    execRemoteSsh(
+      remote,
+      String.raw`timeout 15s /opt/codex-preview-runtime/bin/node - <<'CODEX_GATEWAY_E2E_DIAGNOSTIC'
+const fs = require('node:fs');
+const path = require('node:path');
+const threadId = ${JSON.stringify(threadId)};
+const root = path.join(process.env.CODEX_HOME || path.join(process.env.HOME, '.codex'), 'sessions');
+const file = fs.readdirSync(root, { recursive: true }).find((name) => name.endsWith('-' + threadId + '.jsonl'));
+const rows = file === undefined ? [] : fs.readFileSync(path.join(root, file), 'utf8').trim().split('\n').slice(-20).map((line) => {
+  try {
+    const row = JSON.parse(line);
+    const payload = row.payload || {};
+    return { timestamp: row.timestamp, type: row.type, payloadType: payload.type,
+      turnId: payload.turn_id, itemId: payload.id, role: payload.role, phase: payload.phase,
+      status: payload.status };
+  } catch { return { type: 'unreadable-final-record' }; }
+});
+process.stdout.write(JSON.stringify({ rolloutFound: file !== undefined, rows }));
+CODEX_GATEWAY_E2E_DIAGNOSTIC`,
+    ).then(({ stdout }) => JSON.parse(stdout) as unknown),
+  ]);
+  await writeFile(
+    test.info().outputPath("steer-completion-diagnostic.json"),
+    JSON.stringify(
+      observations.map((result) =>
+        result.status === "fulfilled" ? result.value : { diagnosticUnavailable: true },
+      ),
+      null,
+      2,
+    ),
+  ).catch(() => undefined);
 }

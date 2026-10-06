@@ -12,17 +12,26 @@ import { projectStore } from "../../utils/gateway/state/projects";
 import { threadMetadataStore } from "../../utils/gateway/state/thread-metadata";
 import { threadSnapshotStore } from "../../utils/gateway/state/thread-snapshots";
 import { remoteFiles } from "../../utils/gateway/infra/host-services";
-import { withAllThreadSources } from "../../utils/gateway/protocol/thread-list";
+import {
+  MAIN_THREAD_SOURCE_KINDS,
+  withAllThreadSources,
+} from "../../utils/gateway/protocol/thread-list";
 import { threadProjectDiscovery } from "../../utils/gateway/runtime/thread-project-discovery";
 import type { AppServerThread, GatewayThread, ProjectRecord } from "~~/shared/types";
 import type { HostWithSecret } from "../../utils/gateway/infra/ssh/ssh-types";
 import { trimmedOrNull } from "~~/shared/utils/strings";
 import { gatewayThreadFromAppServer } from "../../utils/gateway/protocol/gateway-thread";
 import { gatewayLog } from "../../utils/gateway/logging";
+import { isAppServerSubAgentThread } from "~~/shared/runtime/app-server";
 
 export default defineGatewayEventHandler(async (event) => {
   const query = await getValidatedQuery(event, (body) => threadListSchema.parse(body));
   const host = requireRecord(hostStore.getWithSecret(query.hostId), "Host not found");
+  if (query.projectId !== null && query.projectId !== undefined) {
+    const project = requireRecord(projectStore.get(query.projectId), "Project not found");
+    if (project.hostId !== host.id) throw new Error("Project does not belong to host");
+    query.cwd = project.remotePath;
+  }
   const userId = event.context.auth?.user.id;
   const discoveryGeneration =
     userId === undefined ? null : threadProjectDiscovery.captureGeneration(userId, host.id);
@@ -34,6 +43,7 @@ export default defineGatewayEventHandler(async (event) => {
     cursor: query.cursor ?? null,
     searchTerm: query.searchTerm ?? null,
     useRemoteStateIndexOnly: query.useRemoteStateIndexOnly ?? false,
+    mainThreadOnly: query.mainThreadOnly ?? false,
   });
 
   const listParams = withAllThreadSources({
@@ -43,7 +53,14 @@ export default defineGatewayEventHandler(async (event) => {
     searchTerm: trimmedOrNull(query.searchTerm) ?? undefined,
     useStateDbOnly: query.useRemoteStateIndexOnly ?? false,
   });
-  const page = await threadBroker.listThreads(host, listParams);
+  // Filter before the native cursor/limit is applied, so child threads cannot consume the
+  // navigation page and leave it empty after the browser removes sub-agent entries.
+  const page = await threadBroker.listThreads(
+    host,
+    query.mainThreadOnly === true
+      ? { ...listParams, sourceKinds: MAIN_THREAD_SOURCE_KINDS }
+      : listParams,
+  );
   if (userId !== undefined && discoveryGeneration !== null) {
     const current = threadProjectDiscovery.indexPageIfCurrent(
       userId,
@@ -52,7 +69,14 @@ export default defineGatewayEventHandler(async (event) => {
       page,
     );
     if (current && shouldDiscoverHostProjects(query)) {
-      threadProjectDiscovery.schedule(userId, host, page, listParams, discoveryGeneration);
+      // Project discovery must still walk every source, including child-only workspaces.
+      threadProjectDiscovery.schedule(
+        userId,
+        host,
+        query.mainThreadOnly === true ? null : page,
+        listParams,
+        discoveryGeneration,
+      );
     }
   }
   const projects = projectStore.list(host.id);
@@ -67,11 +91,15 @@ export default defineGatewayEventHandler(async (event) => {
     indexedThreads,
     projects,
     query.searchTerm ?? null,
+    query.mainThreadOnly ?? false,
   );
   const projectDirectoryAvailability = await inspectProjectAvailability(host, projects);
   return {
     ...page,
-    data: gatewayThreads,
+    data:
+      query.cwd != null && query.cwd !== ""
+        ? gatewayThreads.filter((thread) => thread.cwd === query.cwd)
+        : gatewayThreads,
     projects,
     projectDirectoryAvailability,
   };
@@ -124,10 +152,15 @@ function gatewayThreadsForList(
   indexedThreads: ReturnType<typeof threadMetadataStore.list>,
   projects: ProjectRecord[],
   searchTerm: string | null,
+  mainThreadOnly: boolean,
 ) {
   const metadataById = new Map(indexedThreads.map((thread) => [thread.id, thread]));
   const threadsById = new Map(remoteThreads.map((thread) => [thread.id, thread]));
   for (const thread of cachedThreads) {
+    // A snapshot can predate a parent/source update seen by native project discovery.
+    // Apply this cache guard only to snapshots; fresh native DTOs remain authoritative.
+    if (mainThreadOnly && trimmedOrNull(metadataById.get(thread.id)?.parentThreadId) !== null)
+      continue;
     if (metadataById.has(thread.id) && !threadsById.has(thread.id)) {
       // A freshly started thread can precede rollout materialization and therefore be absent from
       // thread/list briefly. The open snapshot is the complete official DTO returned by
@@ -137,6 +170,7 @@ function gatewayThreadsForList(
   }
   const normalizedSearch = searchTerm?.trim().toLowerCase() ?? "";
   return [...threadsById.values()]
+    .filter((thread) => !mainThreadOnly || !isAppServerSubAgentThread(thread))
     .map((thread) => {
       const metadata = metadataById.get(thread.id);
       const projectId =

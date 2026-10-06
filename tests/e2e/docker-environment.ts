@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Client } from "ssh2";
+import { quote } from "shell-quote";
 import { SUPPORTED_CODEX_VERSION } from "../../server/utils/gateway/infra/codex/codex-version";
 import { connectTestSsh, execTestSsh } from "./helpers/ssh-client";
 import { nodeErrorCode } from "./helpers/node-errors";
@@ -167,6 +168,18 @@ async function prepareRemoteCodexHome(env: RemoteEnv) {
 
   const connection = await connectTestSsh({ ...env, keyboardInteractiveCode: env.mfaCode });
   try {
+    if (process.env.E2E_PREPARE_REMOTE_PROJECT_DIR === "1") {
+      if (!env.projectPath.startsWith("/")) {
+        throw new Error("The prepared remote project directory must be an absolute path");
+      }
+      const projectPath = quote([env.projectPath]);
+      // Create the NAS topology's scratch cwd as the actual SSH user, without changing ownership
+      // or permissions of the source checkout. File/Git tests create their own separate fixtures.
+      await execTestSsh(
+        connection,
+        `mkdir -p -- ${projectPath} && test -r ${projectPath} && test -w ${projectPath} && test -x ${projectPath}`,
+      );
+    }
     await execTestSsh(connection, "rm -rf /home/codex/.codex && mkdir -p /home/codex/.codex");
     await uploadDirectory(connection, codexHome, "/home/codex/.codex");
     if (env.runtimeFixture === "current-codex") {

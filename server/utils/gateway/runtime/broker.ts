@@ -70,6 +70,19 @@ class ThreadBroker {
     return this.turnCommands.startTurn(host, threadId, input);
   }
 
+  retainQueuedThread(host: HostRecord, threadId: string) {
+    return this.registry.retainSubscription(host, threadId, "scoped");
+  }
+
+  startQueuedTurn(
+    host: HostRecord,
+    threadId: string,
+    input: TurnStartInput,
+    onStarting?: () => boolean,
+  ) {
+    return this.turnCommands.startQueuedTurn(host, threadId, input, onStarting);
+  }
+
   async steerTurn(host: HostRecord, threadId: string, input: TurnSteerInput) {
     return this.turnCommands.steerTurn(host, threadId, input);
   }

@@ -116,6 +116,8 @@ export function cleanupRealtimePeer(peer: RealtimePeer) {
   state.notificationUnsubscribe = undefined;
   state.pinnedThreadsUnsubscribe?.();
   state.pinnedThreadsUnsubscribe = undefined;
+  state.turnQueueUnsubscribe?.();
+  state.turnQueueUnsubscribe = undefined;
   state.threadRuntimeStatusUnsubscribe?.();
   state.threadRuntimeStatusUnsubscribe = undefined;
   state.browserPreviewUnsubscribe?.();

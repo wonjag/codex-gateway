@@ -1,3 +1,4 @@
+import { queuedTurnSchema } from "~~/shared/types/turn-queue";
 import { z } from "zod";
 import type { RealtimeServerMessage } from "../../types";
 import { reasoningSummarySchema } from "../../reasoning-summary";
@@ -613,6 +614,17 @@ export const realtimeServerMessageSchema: z.ZodType<RealtimeServerMessage> = z.d
         ...threadScopeFields,
         threadSettings: threadSettingsSchema,
       })
+      .strict(),
+    z
+      .object({
+        type: z.literal("turn.queue.snapshot"),
+        requestId: z.string(),
+        ...threadScopeFields,
+        entries: z.array(queuedTurnSchema),
+      })
+      .strict(),
+    z
+      .object({ type: z.literal("thread.title.generated"), ...requestIdField, title: z.string() })
       .strict(),
     z
       .object({

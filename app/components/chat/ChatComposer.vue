@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import TurnQueuePanel from "@/components/chat/composer/TurnQueuePanel.vue";
+import { Button } from "@codex-gateway/ui/button";
 import ComposerShell from "@/components/chat/composer/ComposerShell.vue";
 import { useComposerController } from "@/composables/composer/useComposerController";
 
@@ -24,6 +26,7 @@ const {
   handleComposerKeydown,
   handlePaste,
   handlePrimaryAction,
+  steerNow,
   hasComposerInput,
   interruptingTurn,
   isThreadRunning,
@@ -63,6 +66,19 @@ const {
 </script>
 
 <template>
+  <TurnQueuePanel
+    v-if="selectedHostId !== null && selectedThreadId !== null"
+    :host-id="selectedHostId"
+    :thread-id="selectedThreadId"
+  />
+  <Button
+    v-if="isThreadRunning && hasComposerInput"
+    variant="ghost"
+    size="sm"
+    :disabled="!canUsePrimaryAction"
+    @click="steerNow"
+    >{{ $t("app.steerNow") }}</Button
+  >
   <ComposerShell
     v-model="turnText"
     v-model:file-references="fileReferences"

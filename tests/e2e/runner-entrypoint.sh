@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# NAS workspaces are prepared once before the build. Application and browser containers reuse
+# that workspace, so synchronizing here would remove files another container is still reading.
+if [ "${E2E_NAS_MODE:-0}" = "1" ]; then
+  exec "$@"
+fi
+
 source_dir="${E2E_SOURCE_DIR:-/workspace/source}"
 work_dir="/workspace/codex-gateway"
 

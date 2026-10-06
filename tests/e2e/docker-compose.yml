@@ -1,3 +1,11 @@
+x-build-proxy: &build-proxy
+  HTTP_PROXY: ${HTTP_PROXY:-}
+  HTTPS_PROXY: ${HTTPS_PROXY:-}
+  http_proxy: ${HTTP_PROXY:-}
+  https_proxy: ${HTTPS_PROXY:-}
+  NO_PROXY: ${NO_PROXY:-},localhost,127.0.0.1,::1,.nip.io,gateway-under-test,bark-target,ssh-target,ssh-target-mfa,ssh-target-legacy-node,ssh-target-npm-codex
+  no_proxy: ${NO_PROXY:-},localhost,127.0.0.1,::1,.nip.io,gateway-under-test,bark-target,ssh-target,ssh-target-mfa,ssh-target-legacy-node,ssh-target-npm-codex
+
 x-ssh-target: &ssh-target
   environment:
     CODEX_HOME: /home/codex/.codex
@@ -20,6 +28,8 @@ services:
       context: ./docker
       target: empty-runtime
       args:
+        <<: *build-proxy
+        E2E_DEBIAN_MIRROR: ${E2E_DEBIAN_MIRROR:-}
         E2E_UID: ${E2E_UID:-12345}
         E2E_GID: ${E2E_GID:-12345}
     <<: *ssh-target
@@ -29,6 +39,8 @@ services:
       context: ./docker
       target: legacy-node
       args:
+        <<: *build-proxy
+        E2E_DEBIAN_MIRROR: ${E2E_DEBIAN_MIRROR:-}
         E2E_UID: ${E2E_UID:-12345}
         E2E_GID: ${E2E_GID:-12345}
     <<: *ssh-target
@@ -38,6 +50,8 @@ services:
       context: ./docker
       target: npm-codex
       args:
+        <<: *build-proxy
+        E2E_DEBIAN_MIRROR: ${E2E_DEBIAN_MIRROR:-}
         CODEX_CLI_VERSION: ${E2E_CODEX_CLI_VERSION:-0.140.0}
         E2E_UID: ${E2E_UID:-12345}
         E2E_GID: ${E2E_GID:-12345}
@@ -48,6 +62,8 @@ services:
       context: ./docker
       target: mfa-runtime
       args:
+        <<: *build-proxy
+        E2E_DEBIAN_MIRROR: ${E2E_DEBIAN_MIRROR:-}
         CURRENT_CODEX_CLI_VERSION: ${E2E_SUPPORTED_CODEX_VERSION}
         E2E_UID: ${E2E_UID:-12345}
         E2E_GID: ${E2E_GID:-12345}
@@ -59,6 +75,9 @@ services:
     build:
       context: ../..
       dockerfile: tests/e2e/runner.Dockerfile
+      args:
+        <<: *build-proxy
+        E2E_DEBIAN_MIRROR: ${E2E_DEBIAN_MIRROR:-}
     environment:
       # Keep enough cgroup headroom for Rolldown/Nitro native allocations while allowing the
       # JavaScript heap to finish the production bundle. The container remains capped at 2 GiB.
@@ -80,6 +99,8 @@ services:
       - ssh-target-mfa
       - bark-target
     environment:
+      <<: *build-proxy
+      NODE_USE_ENV_PROXY: "1"
       HOST: 0.0.0.0
       PORT: "3100"
       CODEX_GATEWAY_CONFIG_SECRET: e2e-config-secret

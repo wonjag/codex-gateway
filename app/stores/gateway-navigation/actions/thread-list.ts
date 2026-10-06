@@ -64,17 +64,23 @@ export function createThreadListActions() {
       const hostId = navigation.selectedHostId;
       const projectId = navigation.selectedProjectId;
       const projectCwd = projectById(catalog.projects, projectId)?.remotePath;
+      const generation = ++navigation.listGeneration;
       if (hostId === null) return;
       const sessionIsCurrent = captureSessionEpoch();
       views.loading = true;
       bootstrap.clearError();
       try {
-        const query: Record<string, unknown> = { hostId, limit: 50 };
+        const query: Record<string, unknown> = {
+          hostId,
+          limit: 50,
+          mainThreadOnly: true,
+          useRemoteStateIndexOnly: true,
+        };
         if (projectId !== null) query.projectId = projectId;
         if (projectCwd !== undefined && projectCwd !== "") query.cwd = projectCwd;
         if (searchTerm !== "") query.searchTerm = searchTerm;
         const response = await gatewayApi<ThreadListResponse>("/api/threads", { query });
-        if (!sessionIsCurrent()) return;
+        if (!sessionIsCurrent() || navigation.listGeneration !== generation) return;
         if (navigation.selectedHostId !== hostId || navigation.selectedProjectId !== projectId)
           return;
         if (response.projects !== undefined) catalog.mergeProjects(response.projects);
@@ -94,7 +100,7 @@ export function createThreadListActions() {
         navigation.threads = sortThreads(mainThreads);
         config.setCatalog(catalog.hosts, catalog.projects);
       } catch (error: unknown) {
-        if (!sessionIsCurrent()) return;
+        if (!sessionIsCurrent() || navigation.listGeneration !== generation) return;
         if (navigation.selectedHostId !== hostId || navigation.selectedProjectId !== projectId)
           return;
         const message = messageFromError(
@@ -107,6 +113,7 @@ export function createThreadListActions() {
       } finally {
         if (
           sessionIsCurrent() &&
+          navigation.listGeneration === generation &&
           navigation.selectedHostId === hostId &&
           navigation.selectedProjectId === projectId
         ) {

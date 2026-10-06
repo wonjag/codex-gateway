@@ -1,3 +1,5 @@
+export const MAIN_THREAD_SOURCE_KINDS = ["cli", "vscode", "exec", "appServer", "unknown"] as const;
+
 export const ALL_THREAD_SOURCE_KINDS = [
   "cli",
   "vscode",
