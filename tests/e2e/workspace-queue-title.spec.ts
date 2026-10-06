@@ -164,6 +164,14 @@ test("queued prompts survive reload, synchronize across pages, and run as a late
       text: `Reply exactly ${second}, with no tools.`,
     });
     await expect(otherPage.getByTestId("turn-queue")).toContainText("with no tools");
+    // Reload installs a new socket probe, so verify the original enqueue traffic before it.
+    expect(
+      await page.evaluate(() =>
+        window.__gatewayRealtimeProbe?.messages.some(
+          (message) => message.type === "turn.steer" || message.type === "turn.interrupt",
+        ),
+      ),
+    ).toBe(false);
     await reloadApp(page);
     await expect(page.getByTestId("turn-queue")).toContainText(second);
     await expect
@@ -172,10 +180,12 @@ test("queued prompts survive reload, synchronize across pages, and run as a late
           page.evaluate((marker) => {
             const turns = window.__codexGatewayE2e?.views.history?.thread.turns ?? [];
             return turns
-              .filter((turn) =>
-                turn.items.some(
-                  (item) => item.type === "agentMessage" && (item.text ?? "").includes(marker),
-                ),
+              .filter(
+                (turn) =>
+                  turn.status === "completed" &&
+                  turn.items.some(
+                    (item) => item.type === "agentMessage" && (item.text ?? "").includes(marker),
+                  ),
               )
               .map((turn) => turn.id);
           }, second),
@@ -206,7 +216,7 @@ test("queued prompts survive reload, synchronize across pages, and run as a late
   }
 });
 
-test("title suggestions summarize real history without overwriting a manual title", async ({
+test("automatic titles and suggestions summarize real history without overwriting a manual title", async ({
   page,
   remoteWorkspace,
 }) => {
@@ -229,6 +239,18 @@ test("title suggestions summarize real history without overwriting a manual titl
       { timeout: 180_000 },
     )
     .toBe(true);
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          (id) =>
+            window.__codexGatewayE2e?.navigation.threads.find((thread) => thread.id === id)?.name ??
+            "",
+          threadId,
+        ),
+      { timeout: 120_000 },
+    )
+    .toMatch(/^[^\r\n]{1,48}$/);
   const manual = "用户人工设置的标题，不应被后台摘要任务覆盖";
   await page.evaluate(
     async ({ hostId, threadId, name }) => {

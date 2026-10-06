@@ -1,0 +1,54 @@
+# Optional runtime dependency installation on a bind-mounted data disk. SQLite stays in the
+# local bind mounts. Some managed Docker platforms reject named volumes.
+x-nas-environment: &nas-environment
+  E2E_NAS_MODE: "1"
+  COREPACK_HOME: /cache/corepack
+  XDG_CACHE_HOME: /cache/xdg
+  NODE_USE_ENV_PROXY: "1"
+  HTTP_PROXY: ${HTTP_PROXY:-}
+  HTTPS_PROXY: ${HTTPS_PROXY:-}
+  http_proxy: ${HTTP_PROXY:-}
+  https_proxy: ${HTTPS_PROXY:-}
+  NO_PROXY: ${NO_PROXY:-},localhost,127.0.0.1,::1,.nip.io,gateway-under-test,bark-target,ssh-target,ssh-target-mfa,ssh-target-legacy-node,ssh-target-npm-codex
+  no_proxy: ${NO_PROXY:-},localhost,127.0.0.1,::1,.nip.io,gateway-under-test,bark-target,ssh-target,ssh-target-mfa,ssh-target-legacy-node,ssh-target-npm-codex
+
+services:
+  bark-target:
+    volumes:
+      - ${E2E_LOCAL_RUN_DIR:?}/bark-requests:/requests
+
+  build-runner:
+    image: codex-gateway-e2e-nas-runner
+    build:
+      target: nas-runtime
+    environment:
+      <<: *nas-environment
+    volumes:
+      - ${E2E_LOCAL_RUN_DIR:?}/data:/workspace/codex-gateway/.data-e2e
+      - ${E2E_NAS_RUN_DIR:?}/workspace:/workspace/codex-gateway
+      - ${E2E_NAS_ROOT:?}/cache:/cache
+      - ${E2E_PNPM_STORE:?}:/cache/pnpm-store
+      - ${E2E_NAS_RUN_DIR:?}/build-output:/e2e-output
+
+  gateway-under-test:
+    image: codex-gateway-e2e-nas-runner
+    environment:
+      E2E_NAS_MODE: "1"
+      TMPDIR: /nas-tmp
+    volumes:
+      - ${E2E_LOCAL_RUN_DIR:?}/data:/workspace/codex-gateway/.data-e2e
+      - ${E2E_NAS_RUN_DIR:?}/build-output:/e2e-output:ro
+      - ${E2E_NAS_RUN_DIR:?}/gateway-tmp:/nas-tmp
+
+  test-runner:
+    image: codex-gateway-e2e-nas-runner
+    environment:
+      <<: *nas-environment
+    volumes:
+      - ${E2E_LOCAL_RUN_DIR:?}/data:/workspace/codex-gateway/.data-e2e
+      - ${E2E_LOCAL_RUN_DIR:?}/bark-requests:/bark-requests
+      - ${E2E_LOCAL_RUN_DIR:?}/runner-home:/home/pwuser
+      - ${E2E_NAS_RUN_DIR:?}/workspace:/workspace/codex-gateway
+      - ${E2E_NAS_ROOT:?}/cache:/cache
+      - ${E2E_PNPM_STORE:?}:/cache/pnpm-store
+      - ${E2E_NAS_ROOT:?}/browsers:/ms-playwright

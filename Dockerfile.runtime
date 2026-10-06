@@ -1,0 +1,21 @@
+# Build scripts/build-on-data-disk.sh's small artifact context, not the repository root.
+ARG NODE_VERSION=24-bookworm-slim
+
+FROM node:${NODE_VERSION} AS runner
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV PORT=3000
+ARG BUILD_DEBIAN_MIRROR
+RUN if [ -n "$BUILD_DEBIAN_MIRROR" ]; then \
+      sed -i "s|http://deb.debian.org|${BUILD_DEBIAN_MIRROR%/}|g" /etc/apt/sources.list.d/debian.sources; \
+    fi \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates tini \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY .output ./.output
+COPY scripts ./scripts
+EXPOSE 3000
+ENTRYPOINT ["/usr/bin/tini", "--"]
+# Match the normal production image's V8 policy and periodic Nitro housekeeping support.
+CMD ["node", "--expose-gc", "--max-old-space-size=512", ".output/server/index.mjs"]

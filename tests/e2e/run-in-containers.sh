@@ -27,6 +27,47 @@ export E2E_SUPPORTED_CODEX_VERSION="$(
     "import('./server/utils/gateway/infra/codex/codex-version.ts').then(({ SUPPORTED_CODEX_VERSION }) => process.stdout.write(SUPPORTED_CODEX_VERSION))"
 )"
 
+nas_local_run_dir=""
+if [ -n "${E2E_NAS_ROOT:-}" ]; then
+  if [[ "$E2E_NAS_ROOT" != /* ]]; then
+    echo 'E2E_NAS_ROOT must be an absolute path on the Docker daemon host.' >&2
+    exit 2
+  fi
+  # Each run has its own source snapshot. Only package/browser caches are shared; neither a
+  # browser run nor a concurrent source edit can overwrite the build container's workspace.
+  umask 077
+  mkdir -p "$E2E_NAS_ROOT"/{runs,cache,browsers}
+  export E2E_PNPM_STORE="${E2E_PNPM_STORE:-$E2E_NAS_ROOT/cache/pnpm-store}"
+  if [[ "$E2E_PNPM_STORE" != /* ]]; then
+    echo 'E2E_PNPM_STORE must be an absolute path on the Docker daemon host.' >&2
+    exit 2
+  fi
+  mkdir -p "$E2E_PNPM_STORE"
+  export E2E_NAS_RUN_DIR
+  E2E_NAS_RUN_DIR="$(mktemp -d "$E2E_NAS_ROOT/runs/run.XXXXXXXX")"
+  mkdir -p "$E2E_NAS_RUN_DIR"/{workspace,build-output,gateway-tmp}
+  # Keep SQLite WAL and small runtime state on a local filesystem. A bind mount also works
+  # with platform Docker proxies that do not support named volumes.
+  local_root="${E2E_LOCAL_ROOT:-$HOME/.cache/codex-gateway-e2e}"
+  if [[ "$local_root" != /* ]]; then
+    echo 'E2E_LOCAL_ROOT must be an absolute path on a local filesystem.' >&2
+    exit 2
+  fi
+  mkdir -p "$local_root"
+  export E2E_LOCAL_RUN_DIR
+  E2E_LOCAL_RUN_DIR="$(mktemp -d "$local_root/run.XXXXXXXX")"
+  nas_local_run_dir="$E2E_LOCAL_RUN_DIR"
+  mkdir -p "$E2E_LOCAL_RUN_DIR"/{data,bark-requests,runner-home}
+  tar -C "$project_dir" \
+    --exclude=node_modules --exclude=dist --exclude=.turbo --exclude='*.log' \
+    -cf - app i18n packages patches public scripts server shared tests \
+    components.json nuxt.config.ts package.json playwright.config.ts pnpm-lock.yaml \
+    pnpm-workspace.yaml turbo.json tailwind.config.ts tsconfig.json \
+    | tar -C "$E2E_NAS_RUN_DIR/workspace" -xf -
+  compose+=(-f "$script_dir/docker-compose.nas.yml")
+  echo "E2E source, dependencies and build artifacts: $E2E_NAS_RUN_DIR"
+fi
+
 cleanup() {
   local status=$?
   if [ "$status" -ne 0 ]; then
@@ -34,12 +75,20 @@ cleanup() {
       gateway-under-test ssh-target ssh-target-legacy-node ssh-target-npm-codex \
       ssh-target-mfa >&2 || true
   fi
-  "${compose[@]}" down --remove-orphans >/dev/null 2>&1 || true
+  if "${compose[@]}" down --remove-orphans >/dev/null 2>&1; then
+    if [ -n "$nas_local_run_dir" ]; then
+      rm -rf "$nas_local_run_dir"
+    fi
+  fi
 }
 trap cleanup EXIT
 
 "${compose[@]}" build \
   build-runner ssh-target ssh-target-legacy-node ssh-target-npm-codex ssh-target-mfa
+if [ -n "${E2E_NAS_ROOT:-}" ]; then
+  "${compose[@]}" run --rm --no-deps build-runner \
+    bash -lc 'pnpm install --frozen-lockfile --store-dir /cache/pnpm-store --package-import-method copy'
+fi
 # Build, application server, and browser runner use separate 2 GiB cgroups. Sharing only the
 # gateway network namespace preserves the production-like nip.io subdomain routing used by browser
 # preview tests without coupling process memory.
@@ -48,5 +97,5 @@ trap cleanup EXIT
 "${compose[@]}" up -d --wait \
   gateway-under-test browser-preview-ingress
 "${compose[@]}" run --rm test-runner \
-  bash -lc 'exec pnpm exec playwright test --reporter=dot "$@"' \
+  bash -lc 'if [ "${E2E_NAS_MODE:-}" = "1" ]; then pnpm exec playwright install --with-deps chromium webkit && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* || exit $?; fi; exec pnpm exec playwright test --reporter=dot "$@"' \
   e2e "$@"
