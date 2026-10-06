@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { envFile, mfaEnvFile, upgradeEnvFile } from "../docker-environment";
@@ -176,7 +176,16 @@ export async function addRemoteHost(
   const host = uiHostSchema.parse(await (await hostResponsePromise).json());
   await closeSettings(page);
   if (options.waitForConnection !== false) {
-    await expect(hostConnectedIndicator(page, host.id)).toBeVisible({ timeout: 120_000 });
+    const defaultConnectTimeout = 120_000;
+    const connectTimeout = Number(process.env.E2E_HOST_CONNECT_TIMEOUT_MS ?? defaultConnectTimeout);
+    if (!Number.isFinite(connectTimeout) || connectTimeout <= 0) {
+      throw new Error("E2E_HOST_CONNECT_TIMEOUT_MS must be a positive finite number");
+    }
+    // A cold host may need the real standalone download before SSH/app-server is ready. Keep
+    // the test's scenario budget in addition to any explicitly requested installation allowance.
+    const extraConnectTime = Math.max(0, connectTimeout - defaultConnectTimeout);
+    if (extraConnectTime > 0) test.info().setTimeout(test.info().timeout + extraConnectTime);
+    await expect(hostConnectedIndicator(page, host.id)).toBeVisible({ timeout: connectTimeout });
   }
   if (
     options.waitForConnection !== false &&

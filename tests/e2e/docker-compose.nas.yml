@@ -14,7 +14,9 @@ x-nas-environment: &nas-environment
 
 services:
   bark-target:
-    volumes:
+    command: ["node", "/e2e-source/bark-server.ts"]
+    volumes: !override
+      - ${E2E_NAS_RUN_DIR:?}/workspace/tests/e2e:/e2e-source:ro
       - ${E2E_LOCAL_RUN_DIR:?}/bark-requests:/requests
 
   build-runner:
@@ -40,10 +42,16 @@ services:
       - ${E2E_NAS_RUN_DIR:?}/build-output:/e2e-output:ro
       - ${E2E_NAS_RUN_DIR:?}/gateway-tmp:/nas-tmp
 
+  browser-preview-ingress:
+    command: ["nginx", "-c", "/e2e-config/browser-preview-nginx.conf", "-g", "daemon off;"]
+    volumes: !override
+      - ${E2E_NAS_RUN_DIR:?}/workspace/tests/e2e/docker:/e2e-config:ro
+
   test-runner:
     image: codex-gateway-e2e-nas-runner
     environment:
       <<: *nas-environment
+      E2E_HOST_CONNECT_TIMEOUT_MS: ${E2E_HOST_CONNECT_TIMEOUT_MS:-120000}
     volumes:
       - ${E2E_LOCAL_RUN_DIR:?}/data:/workspace/codex-gateway/.data-e2e
       - ${E2E_LOCAL_RUN_DIR:?}/bark-requests:/bark-requests
