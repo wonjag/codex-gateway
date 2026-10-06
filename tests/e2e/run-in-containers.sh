@@ -191,7 +191,14 @@ if [ "$nas_resume" -eq 1 ]; then
   fi
   # Playwright compiles the current test files at runtime. Refresh assertions/helpers while the
   # application output and Docker fixture inputs above remain verified against the original build.
-  rm -rf "$E2E_NAS_RUN_DIR/workspace/tests"
+  # Preserve directory inodes: managed Docker proxies can retain mappings of these bind sources.
+  # Remove stale files explicitly so deleted tests are not accidentally kept in a resumed suite.
+  while IFS= read -r -d '' saved_test; do
+    relative_test="${saved_test#"$E2E_NAS_RUN_DIR/workspace/"}"
+    if [ ! -f "$project_dir/$relative_test" ] && [ ! -L "$project_dir/$relative_test" ]; then
+      rm -f -- "$saved_test"
+    fi
+  done < <(find "$E2E_NAS_RUN_DIR/workspace/tests" \( -type f -o -type l \) -print0)
   tar -C "$project_dir" -cf - tests | tar -C "$E2E_NAS_RUN_DIR/workspace" -xf -
   echo 'Verified saved NAS build; recreating the local test database.'
   "${compose[@]}" run --rm --no-deps build-runner \
