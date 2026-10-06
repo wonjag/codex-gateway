@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { devices } from "@playwright/test";
 import { z } from "zod";
 import { expect, test } from "./fixtures/remote-workspace";
 import { authenticatedFetch, openApp, reloadApp } from "./helpers/app";
@@ -123,11 +124,23 @@ test("queued prompts survive reload, synchronize across pages, and run as a late
       clientUserMessageId: id,
     },
   });
-  const other = await browser.newContext({ storageState: await page.context().storageState() });
+  const other = await browser.newContext({
+    ...devices["Pixel 5"],
+    viewport: { width: 375, height: 812 },
+    storageState: await page.context().storageState(),
+  });
   const otherPage = await other.newPage();
   try {
     await openApp(otherPage, { resetConfig: false });
-    await expect(otherPage.getByTestId("turn-queue")).toContainText(second);
+    await expect(otherPage.getByTestId("mobile-layout")).toBeVisible();
+    const mobileQueue = otherPage.getByTestId("turn-queue");
+    await expect(mobileQueue).toContainText(second);
+    await expect(mobileQueue).toBeInViewport({ ratio: 1 });
+    await expect(otherPage.getByPlaceholder("输入后续修改要求")).toBeInViewport({ ratio: 1 });
+    await expect(otherPage.getByTestId("send-turn-button")).toBeInViewport({ ratio: 1 });
+    await expect
+      .poll(() => mobileQueue.evaluate((element) => element.scrollWidth <= element.clientWidth))
+      .toBe(true);
     const cancelId = randomUUID();
     await sendRealtimeRequest(page, {
       type: "turn.queue",
@@ -154,16 +167,14 @@ test("queued prompts survive reload, synchronize across pages, and run as a late
     await expect(page.getByTestId("turn-queue")).not.toContainText(
       "This message will be cancelled",
     );
-    await sendRealtimeRequest(page, {
-      type: "turn.queue",
-      requestId: "edit",
-      hostId: host.id,
-      threadId,
-      action: "edit",
-      id,
-      text: `Reply exactly ${second}, with no tools.`,
-    });
-    await expect(otherPage.getByTestId("turn-queue")).toContainText("with no tools");
+    await mobileQueue.getByRole("button", { name: "编辑待发送消息", exact: true }).click();
+    const mobileQueueEditor = mobileQueue.getByRole("textbox", { name: "编辑待发送消息" });
+    await mobileQueueEditor.fill(`Reply exactly ${second}, with no tools.`);
+    await expect(mobileQueueEditor).toBeInViewport({ ratio: 1 });
+    await mobileQueue.getByRole("button", { name: "保存", exact: true }).click();
+    await expect(page.getByTestId("turn-queue")).toContainText("with no tools");
+    await expect(mobileQueue).toContainText("with no tools");
+    await otherPage.screenshot({ path: test.info().outputPath("mobile-turn-queue.png") });
     // Reload installs a new socket probe, so verify the original enqueue traffic before it.
     expect(
       await page.evaluate(() =>
