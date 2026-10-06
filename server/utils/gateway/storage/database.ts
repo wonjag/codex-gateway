@@ -89,6 +89,20 @@ function migrate(db: DatabaseSync) {
       last_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS turn_queue (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      host_id INTEGER NOT NULL,
+      thread_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      encrypted_input TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('waiting', 'sending', 'paused', 'sent')),
+      created_at TEXT NOT NULL,
+      UNIQUE(user_id, host_id, thread_id, message_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_turn_queue_scope
+      ON turn_queue(user_id, host_id, thread_id, sequence);
+
     CREATE TABLE IF NOT EXISTS user_configs (
       user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       encrypted_config_json TEXT NOT NULL,

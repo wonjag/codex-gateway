@@ -1,3 +1,4 @@
+import { subscribeTurnQueue } from "../../runtime/turn-queue";
 import { randomUUID } from "node:crypto";
 import type { RealtimeClientMessage } from "~~/shared/types";
 import { userStore } from "../../auth/users";
@@ -49,6 +50,9 @@ export function authenticatePeer(
     pinnedThreadsUnsubscribe: pinnedThreadEvents.subscribe(user.id, () => {
       sendRealtimePeerMessage(peer, { type: "config.pinnedThreads.changed" });
     }),
+    turnQueueUnsubscribe: subscribeTurnQueue(user.id, (snapshot) =>
+      sendRealtimePeerMessage(peer, snapshot),
+    ),
     threadRuntimeStatusUnsubscribe: threadRuntimeStatusHub.subscribe(user.id, (update) => {
       sendRealtimePeerMessage(peer, { type: "thread.runtime.updated", update });
     }),

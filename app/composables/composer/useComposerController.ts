@@ -104,11 +104,14 @@ export function useComposerController() {
   );
   const canUsePrimaryAction = computed(() =>
     Boolean(
-      (canSendTurn.value || canInterruptTurn.value) && !attachmentUpload.uploadingAttachments.value,
+      (canSendTurn.value || canInterruptTurn.value) &&
+      !attachmentUpload.uploadingAttachments.value &&
+      !submit.submitting.value,
     ),
   );
   const sendButtonLabel = computed(() => {
-    if (submit.hasComposerInput.value) return t("app.send");
+    if (submit.hasComposerInput.value)
+      return t(isThreadRunning.value ? "app.queueSend" : "app.send");
     if (isThreadRunning.value) return t("app.interruptTurn");
     if (selectedThreadStatus.value === "completed") return t("app.completed");
     if (selectedThreadStatus.value === "failed") return t("app.failed");
@@ -212,6 +215,7 @@ export function useComposerController() {
     runSlashCommand: slashActions.runSlashCommand,
     handleComposerKeydown,
     handlePrimaryAction,
+    steerNow: () => submit.submitTurn(true),
     handleFileReferenceLimit,
     models,
     loadingModels,

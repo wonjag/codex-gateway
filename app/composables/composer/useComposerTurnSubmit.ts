@@ -1,3 +1,6 @@
+import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
+import { useGatewayTurnQueueStore } from "@/stores/gateway-turn-queue";
+import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { computed, type Ref } from "vue";
 
 import type { ComposerTurnOptions } from "~~/shared/types";
@@ -50,7 +53,9 @@ export function useComposerTurnSubmit(input: {
     await threadView.startThread(input.selectedTurnOptions());
   }
 
-  async function submitTurn() {
+  const submitting = ref(false);
+  async function submitTurn(immediate = false) {
+    if (submitting.value) return;
     const text = input.turnText.value.trim();
     if (!text && !input.attachedFiles.value.length) return;
     if (planModeActive.value) {
@@ -65,19 +70,45 @@ export function useComposerTurnSubmit(input: {
       name,
     }));
     const collaborationMode = composer.selectedThreadSettings.collaborationMode ?? undefined;
-    input.clearDraft();
-    await threadTurns.sendTurn(
-      messageWithFileReferences(text, remoteFiles, input.fileReferencesLabel.value),
-      {
-        ...input.selectedTurnOptions(),
-        collaborationMode,
-        images: attachedImages
-          .map((file) => ({ url: file.dataUrl, detail: "auto" as const }))
-          .filter((image): image is { url: string; detail: "auto" } => Boolean(image.url)),
-        files: remoteFiles,
-        references,
-      },
-    );
+    const navigation = useGatewayNavigationStore();
+    const {
+      selectedHostId: hostId,
+      selectedThreadId: threadId,
+      selectedProjectId: projectId,
+    } = navigation;
+    if (hostId === null || threadId === null || projectId === null) return;
+    const queue = useGatewayTurnQueueStore();
+    const running = useGatewayThreadRuntimeStore().statusFor(hostId, threadId) === "running";
+    const shouldQueue =
+      !immediate && (running || (queue.queues[`${hostId}:${threadId}`]?.length ?? 0) > 0);
+    const send = !shouldQueue
+      ? threadTurns.sendTurn
+      : (text: string, options: ComposerTurnOptions) =>
+          useGatewayTurnQueueStore().enqueue(hostId, threadId, projectId, text, options);
+    submitting.value = true;
+    try {
+      const accepted = await send(
+        messageWithFileReferences(text, remoteFiles, input.fileReferencesLabel.value),
+        {
+          ...input.selectedTurnOptions(),
+          collaborationMode,
+          images: attachedImages
+            .map((file) => ({ url: file.dataUrl, detail: "auto" as const }))
+            .filter((image): image is { url: string; detail: "auto" } => Boolean(image.url)),
+          files: remoteFiles,
+          references,
+        },
+      );
+      if (
+        accepted !== false &&
+        navigation.selectedHostId === hostId &&
+        navigation.selectedThreadId === threadId &&
+        input.turnText.value.trim() === text
+      )
+        input.clearDraft();
+    } finally {
+      submitting.value = false;
+    }
   }
 
   async function interruptTurn() {
@@ -111,6 +142,7 @@ export function useComposerTurnSubmit(input: {
     planModeActive,
     hasComposerInput,
     interruptingTurn,
+    submitting,
     activatePlanMode,
     deactivatePlanMode,
     startNewThread,

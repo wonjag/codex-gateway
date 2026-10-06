@@ -170,6 +170,12 @@ export class RealtimeMessageDispatcher {
       .with({ type: "turn.settings.update" }, (value) =>
         this.dispatchEntry(peer, value, this.handlers[value.type]),
       )
+      .with({ type: "turn.queue" }, (value) =>
+        this.dispatchEntry(peer, value, this.handlers[value.type]),
+      )
+      .with({ type: "thread.title.generate" }, (value) =>
+        this.dispatchEntry(peer, value, this.handlers[value.type]),
+      )
       .with({ type: "turn.start" }, (value) =>
         this.dispatchEntry(peer, value, this.handlers[value.type]),
       )

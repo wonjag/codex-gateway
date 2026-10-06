@@ -1,3 +1,4 @@
+import { turnQueue, threadTitle } from "./handlers/turn-queue";
 import { authenticatePeer } from "./handlers/auth";
 import { subscribeHostLifecycle, unsubscribeHostLifecycle } from "./handlers/host-lifecycle";
 import {
@@ -77,6 +78,8 @@ export const realtimeMessageDispatcher = new RealtimeMessageDispatcher({
   "thread.goal.set": setThreadGoal,
   "thread.goal.get": getThreadGoal,
   "thread.goal.clear": clearThreadGoal,
+  "turn.queue": turnQueue,
+  "thread.title.generate": threadTitle,
   "turn.start": startTurn,
   "turn.steer": steerTurn,
   "turn.interrupt": interruptTurn,

@@ -1,3 +1,4 @@
+import { protectManualTitle } from "./thread-title";
 import type { HostRecord, ThreadSettingsState } from "~~/shared/types";
 import type { ControllerRegistry } from "./controller-registry";
 import { buildAppServerCollaborationMode } from "../protocol/thread-payload";
@@ -66,7 +67,9 @@ export class ThreadSettingsService {
   }
 
   async renameThread(host: HostRecord, threadId: string, name: string) {
-    const client = await this.registry.getHostClient(host);
-    return client.request("thread/name/set", { threadId, name });
+    protectManualTitle(host.id, threadId);
+    return this.registry.withScopedSubscription(host, threadId, (controller) =>
+      controller.enqueue(() => controller.client.request("thread/name/set", { threadId, name })),
+    );
   }
 }

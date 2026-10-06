@@ -764,6 +764,15 @@
     "zoomIn": "放大",
     "zoomOut": "缩小",
     "imageZoom": "图片缩放",
-    "resetImageView": "重置图片视图"
+    "resetImageView": "重置图片视图",
+    "queueSend": "加入队列",
+    "steerNow": "立即追加引导（影响当前回合）",
+    "queuedMessages": "待发送消息（{count}）",
+    "queuePausedHint": "队列已暂停：服务重启、任务失败、被停止或发送结果未确认。请先检查会话，删除已执行的消息后再继续，避免重复执行。",
+    "queueSending": "正在检查并发送…",
+    "editQueuedMessage": "编辑待发送消息",
+    "removeQueuedMessage": "移除",
+    "resumeQueue": "已核对，继续队列",
+    "generateThreadTitle": "生成简短任务名"
   }
 }

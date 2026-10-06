@@ -21,6 +21,7 @@ const emit = defineEmits<{
   "update:open": [open: boolean];
   "update:modelValue": [value: string];
   submit: [];
+  generate: [];
 }>();
 </script>
 
@@ -44,6 +45,14 @@ const emit = defineEmits<{
           />
         </div>
         <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            :disabled="submitting"
+            data-testid="generate-thread-title"
+            @click="emit('generate')"
+            >{{ $t("app.generateThreadTitle") }}</Button
+          >
           <Button
             type="button"
             variant="outline"

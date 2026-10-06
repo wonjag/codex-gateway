@@ -1,3 +1,5 @@
+import { maybeGenerateThreadTitle } from "./thread-title";
+import { parseThreadReadResult } from "~~/shared/runtime/app-server";
 import type { HostRecord } from "~~/shared/types";
 import { INITIAL_TURN_PAGE_LIMIT } from "~~/shared/config";
 import { randomUUID } from "node:crypto";
@@ -23,6 +25,11 @@ export class ThreadTurnCommandService {
       `gateway-${randomUUID()}`,
     );
     return this.registry.withScopedSubscription(host, threadId, async (controller) => {
+      maybeGenerateThreadTitle(
+        host,
+        threadId,
+        trimmedOrFallback(controller.getOpenSnapshot()?.thread.preview, input.text),
+      );
       const result = await controller.enqueue(() =>
         controller.client.request(
           "turn/start",
@@ -44,6 +51,54 @@ export class ThreadTurnCommandService {
       controller.markActiveMainThread();
       return result;
     });
+  }
+
+  async startQueuedTurn(
+    host: HostRecord,
+    threadId: string,
+    input: TurnStartInput,
+    onStarting?: () => boolean,
+  ) {
+    return this.registry.withScopedSubscription(host, threadId, async (controller) =>
+      controller.enqueue(async () => {
+        // Fresh thread/start has no persisted rollout yet; its subscribed snapshot is authoritative.
+        const snapshot = controller.getOpenSnapshot();
+        const thread =
+          snapshot?.thread.path === null
+            ? snapshot.thread
+            : (
+                await controller.client.request(
+                  "thread/read",
+                  { threadId, includeTurns: false },
+                  30_000,
+                  parseThreadReadResult,
+                )
+              ).thread;
+        if (thread.status.type !== "idle") return null;
+        if (input.cwd != null && thread.cwd !== input.cwd)
+          throw new Error("Queued thread workspace changed");
+        if (onStarting !== undefined && !onStarting()) return null;
+        const clientUserMessageId = input.clientUserMessageId ?? `gateway-${randomUUID()}`;
+        maybeGenerateThreadTitle(host, threadId, thread.preview || input.text);
+        const result = await controller.client.request(
+          "turn/start",
+          buildTurnStartParams(threadId, clientUserMessageId, input),
+          120_000,
+          parseTurnStartResponse,
+        );
+        const turnId = result.turn?.id;
+        if (turnId !== undefined)
+          recordAcceptedUserMessage({
+            hostId: host.id,
+            threadId,
+            turnId: String(turnId),
+            clientUserMessageId,
+            content: buildUserInput(input),
+          });
+        controller.markActiveMainThread();
+        return result;
+      }),
+    );
   }
 
   async steerTurn(host: HostRecord, threadId: string, input: TurnSteerInput) {

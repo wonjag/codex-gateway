@@ -1,3 +1,4 @@
+import { queueActionSchema } from "~~/shared/types/turn-queue";
 import { z } from "zod";
 import type { RealtimeClientMessage } from "../../types";
 import { agentProviderIdSchema } from "../../agent/providers";
@@ -148,6 +149,20 @@ export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z.d
         effort: nullableString,
         approvalPolicy,
       })
+      .strict(),
+    z
+      .object({
+        type: z.literal("turn.queue"),
+        ...requestIdField,
+        ...threadScopeFields,
+        action: queueActionSchema,
+        id: nonEmptyString.optional(),
+        text: z.string().optional(),
+        input: z.unknown().optional(),
+      })
+      .strict(),
+    z
+      .object({ type: z.literal("thread.title.generate"), ...requestIdField, ...threadScopeFields })
       .strict(),
     z
       .object({

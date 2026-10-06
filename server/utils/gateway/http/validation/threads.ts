@@ -10,6 +10,10 @@ export const threadListSchema = z.object({
   searchTerm: z.string().trim().nullable().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(30),
   cursor: z.string().trim().nullable().optional(),
+  mainThreadOnly: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .optional(),
   useRemoteStateIndexOnly: z.coerce.boolean().optional(),
 });
 

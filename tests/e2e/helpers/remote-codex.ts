@@ -291,7 +291,7 @@ export async function selectSidebarThread(page: Page, threadId: string) {
 
 export async function sendSteerText(page: Page, marker: string) {
   await page.getByPlaceholder("输入后续修改要求").fill(`追加要求：${marker}`);
-  await page.getByTestId("send-turn-button").click();
+  await page.getByRole("button", { name: /立即追加引导|Steer current turn now/ }).click();
 }
 
 export async function sendImageTurnThroughGateway(

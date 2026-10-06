@@ -764,6 +764,15 @@
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
     "imageZoom": "Image zoom",
-    "resetImageView": "Reset image view"
+    "resetImageView": "Reset image view",
+    "queueSend": "Add to queue",
+    "steerNow": "Steer current turn now",
+    "queuedMessages": "Queued messages ({count})",
+    "queuePausedHint": "Queue paused after a server restart, failure, interruption, or unconfirmed send. Check the conversation and remove messages already executed before resuming.",
+    "queueSending": "Checking and sending…",
+    "editQueuedMessage": "Edit queued message",
+    "removeQueuedMessage": "Remove",
+    "resumeQueue": "Resume after checking",
+    "generateThreadTitle": "Generate task title"
   }
 }

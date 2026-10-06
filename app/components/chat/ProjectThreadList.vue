@@ -112,9 +112,11 @@ function openThread(threadId: string) {
             <span class="flex min-w-0 gap-3">
               <MessageSquareTextIcon class="mt-1 size-4 shrink-0 text-ink-muted" />
               <span class="min-w-0">
-                <span class="line-clamp-2 text-[0.9375rem] leading-6 text-ink">{{
-                  titleFor(thread)
-                }}</span>
+                <span
+                  :title="titleFor(thread)"
+                  class="line-clamp-2 text-[0.9375rem] leading-6 text-ink"
+                  >{{ titleFor(thread) }}</span
+                >
                 <span class="mt-1 flex items-center gap-2 text-xs text-ink-faint">
                   <Clock3Icon class="size-3.5" />
                   {{ formatDate(thread.recencyAt || thread.updatedAt) }}
