@@ -232,5 +232,18 @@ fi
 "${compose[@]}" up -d --wait \
   gateway-under-test browser-preview-ingress
 "${compose[@]}" run --rm test-runner \
-  bash -lc 'if [ "${E2E_NAS_MODE:-}" = "1" ]; then pnpm exec playwright install --with-deps chromium webkit && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* || exit $?; fi; exec pnpm exec playwright test --reporter=dot "$@"' \
+  bash -lc 'set -euo pipefail
+    if [ "${E2E_NAS_MODE:-}" = "1" ]; then
+      if [ "${E2E_APT_DIRECT:-0}" = "1" ]; then
+        # Apt does not consistently honor NO_PROXY for direct regional mirrors. Limit the
+        # override to OS dependencies; browser downloads and tests retain their normal proxy.
+        env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy \
+          pnpm exec playwright install-deps chromium webkit
+      else
+        pnpm exec playwright install-deps chromium webkit
+      fi
+      pnpm exec playwright install chromium webkit
+      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+    fi
+    exec pnpm exec playwright test --reporter=dot "$@"' \
   e2e "$@"

@@ -72,6 +72,7 @@ services:
     image: codex-gateway-e2e-nas-runner
     environment:
       <<: *nas-environment
+      E2E_APT_DIRECT: ${E2E_APT_DIRECT:-0}
       E2E_HOST_CONNECT_TIMEOUT_MS: ${E2E_HOST_CONNECT_TIMEOUT_MS:-120000}
       E2E_REMOTE_PROJECT_PATH: ${E2E_NAS_REMOTE_PROJECT_PATH:-/home/codex/e2e-workspace}
       E2E_PREPARE_REMOTE_PROJECT_DIR: "1"
