@@ -101,15 +101,32 @@ export class ThreadTurnCommandService {
     );
   }
 
-  async steerTurn(host: HostRecord, threadId: string, input: TurnSteerInput) {
+  async steerTurn(
+    host: HostRecord,
+    threadId: string,
+    input: TurnSteerInput,
+    queued?: { cwd: string; onDispatch: () => boolean },
+  ) {
     const clientUserMessageId = trimmedOrFallback(
       input.clientUserMessageId,
       `gateway-steer-${randomUUID()}`,
     );
     return this.registry
       .withScopedSubscription(host, threadId, async (controller) => {
-        const result = await controller.enqueue(() =>
-          controller.client.request(
+        const result = await controller.enqueue(async () => {
+          if (queued !== undefined) {
+            const { thread } = await controller.client.request(
+              "thread/read",
+              { threadId, includeTurns: false },
+              30_000,
+              parseThreadReadResult,
+            );
+            if (thread.cwd !== queued.cwd) throw new Error("Queued thread workspace changed");
+            if (!queued.onDispatch()) return null;
+          }
+          // Native steer owns the model/tool boundary. Never cancel a tool, interrupt the turn,
+          // or synthesize provider-specific tool history to make room for new user input.
+          return controller.client.request(
             "turn/steer",
             {
               threadId,
@@ -120,8 +137,9 @@ export class ThreadTurnCommandService {
             },
             120_000,
             parseTurnSteerResponse,
-          ),
-        );
+          );
+        });
+        if (result === null) return null;
         recordAcceptedUserMessage({
           hostId: host.id,
           threadId,

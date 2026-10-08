@@ -159,6 +159,7 @@ export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z.d
         ...threadScopeFields,
         action: queueActionSchema,
         id: nonEmptyString.optional(),
+        expectedTurnId: nonEmptyString.optional(),
         text: z.string().optional(),
         input: z.unknown().optional(),
       })

@@ -106,14 +106,23 @@ export async function realtimeClientMessageCount(page: Page) {
   return page.evaluate(() => window.__gatewayRealtimeProbe?.messages.length ?? 0);
 }
 
-export async function waitForRealtimeClientMessage(page: Page, type: string, offset: number) {
+export async function waitForRealtimeClientMessage(
+  page: Page,
+  type: string,
+  offset: number,
+  action?: string,
+) {
   try {
     await page.waitForFunction(
-      ({ expectedType, startIndex }) =>
+      ({ expectedType, startIndex, expectedAction }) =>
         (window.__gatewayRealtimeProbe?.messages ?? [])
           .slice(startIndex)
-          .some((message) => message.type === expectedType),
-      { expectedType: type, startIndex: offset },
+          .some(
+            (message) =>
+              message.type === expectedType &&
+              (expectedAction === undefined || message.action === expectedAction),
+          ),
+      { expectedType: type, startIndex: offset, expectedAction: action },
       { timeout: 30_000 },
     );
   } catch (error) {
@@ -131,11 +140,15 @@ export async function waitForRealtimeClientMessage(page: Page, type: string, off
     );
   }
   const message = await page.evaluate(
-    ({ expectedType, startIndex }) =>
+    ({ expectedType, startIndex, expectedAction }) =>
       (window.__gatewayRealtimeProbe?.messages ?? [])
         .slice(startIndex)
-        .find((message) => message.type === expectedType),
-    { expectedType: type, startIndex: offset },
+        .find(
+          (message) =>
+            message.type === expectedType &&
+            (expectedAction === undefined || message.action === expectedAction),
+        ),
+    { expectedType: type, startIndex: offset, expectedAction: action },
   );
   if (!message) {
     throw new Error(`Realtime probe lost message ${type} after it was observed`);

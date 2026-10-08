@@ -144,8 +144,9 @@ export type RealtimeClientMessage =
       requestId: string;
       hostId: number;
       threadId: string;
-      action: "list" | "enqueue" | "edit" | "cancel" | "resume";
+      action: "list" | "enqueue" | "edit" | "cancel" | "resume" | "insert";
       id?: string;
+      expectedTurnId?: string;
       text?: string;
       input?: unknown;
     }

@@ -12,6 +12,7 @@ import { useGatewayComposerStore } from "@/stores/gateway-composer";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
+import { useGatewayTurnQueueStore } from "@/stores/gateway-turn-queue";
 import { latestThreadPlanItem, planItemSummary } from "@/utils/thread-plan";
 import { isThreadGoalOngoing } from "@/utils/thread-goal-display";
 import { useComposerSlashMenu } from "./useComposerSlashMenu";
@@ -23,6 +24,7 @@ export function useComposerController() {
   const navigation = useGatewayNavigationStore();
   const runtime = useGatewayThreadRuntimeStore();
   const threadView = useGatewayThreadViewStore();
+  const turnQueue = useGatewayTurnQueueStore();
   const { t } = useI18n();
   const { models, loadingModels } = storeToRefs(gateway);
   const { selectedHostId, selectedProjectId, selectedThreadId } = storeToRefs(navigation);
@@ -109,6 +111,14 @@ export function useComposerController() {
       !submit.submitting.value,
     ),
   );
+  const canInsertTurn = computed(() => {
+    if (!canUsePrimaryAction.value) return false;
+    const key = `${selectedHostId.value}:${selectedThreadId.value}`;
+    return (
+      Boolean(runtime.activeTurnIdsByThreadKey[key]) &&
+      (turnQueue.queues[key] ?? []).every((entry) => entry.status === "waiting")
+    );
+  });
   const sendButtonLabel = computed(() => {
     if (submit.hasComposerInput.value)
       return t(isThreadRunning.value ? "app.queueSend" : "app.send");
@@ -206,6 +216,7 @@ export function useComposerController() {
     selectedThreadTokenUsage,
     isThreadRunning,
     canInterruptTurn,
+    canInsertTurn,
     canUsePrimaryAction,
     sendButtonLabel,
     slashMenuOpen: slashCommandsState.menuOpen,

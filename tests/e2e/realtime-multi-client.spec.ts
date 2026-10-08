@@ -158,9 +158,24 @@ test("fans out a real remote app-server thread to multiple browser clients acros
     { hostId: host.id, threadId, turnId: await activeRemoteTurnId(page) },
   );
   await sendSteerText(page, steerMarker);
-  const steerMessage = await waitForRealtimeClientMessage(page, "turn.steer", steerMessageOffset);
+  const steerMessage = await waitForRealtimeClientMessage(
+    page,
+    "turn.queue",
+    steerMessageOffset,
+    "insert",
+  );
+  const queuedMessage = await waitForRealtimeClientMessage(
+    page,
+    "turn.queue",
+    steerMessageOffset,
+    "enqueue",
+  );
   expect(steerMessage.threadId).toBe(threadId);
-  expect(steerMessage.text).toContain(steerMarker);
+  expect(steerMessage.expectedTurnId).toBe(firstTurnId);
+  expect(queuedMessage.input).toMatchObject({
+    text: expect.stringContaining(steerMarker),
+    clientUserMessageId: steerMessage.id,
+  });
   await expect(
     page.getByTestId("chat-scroll-area").getByText(steerDisplayText, { exact: true }),
   ).toBeVisible({
@@ -335,11 +350,21 @@ test("fans out a real remote app-server thread to multiple browser clients acros
     await sendSteerText(secondPage, crossBrowserSteerMarker);
     const steerMessage = await waitForRealtimeClientMessage(
       secondPage,
-      "turn.steer",
+      "turn.queue",
       steerMessageOffset,
+      "insert",
+    );
+    const queuedMessage = await waitForRealtimeClientMessage(
+      secondPage,
+      "turn.queue",
+      steerMessageOffset,
+      "enqueue",
     );
     expect(steerMessage.threadId).toBe(threadId);
-    expect(steerMessage.text).toContain(crossBrowserSteerMarker);
+    expect(queuedMessage.input).toMatchObject({
+      text: expect.stringContaining(crossBrowserSteerMarker),
+      clientUserMessageId: steerMessage.id,
+    });
     const mirroredSteer = page
       .getByTestId("chat-scroll-area")
       .getByText(`追加要求：${crossBrowserSteerMarker}`, { exact: true });
