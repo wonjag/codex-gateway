@@ -15,6 +15,7 @@ const {
   attachedFiles,
   fileReferences,
   canInterruptTurn,
+  canInsertTurn,
   canUsePrimaryAction,
   composerInputEnabled,
   deactivatePlanMode,
@@ -75,7 +76,10 @@ const {
     v-if="isThreadRunning && hasComposerInput"
     variant="ghost"
     size="sm"
-    :disabled="!canUsePrimaryAction"
+    class="h-auto min-h-8 max-w-full whitespace-normal"
+    data-testid="steer-turn-button"
+    :title="$t('app.queueDeliveryHint')"
+    :disabled="!canInsertTurn"
     @click="steerNow"
     >{{ $t("app.steerNow") }}</Button
   >

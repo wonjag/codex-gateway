@@ -7,4 +7,4 @@ export const queuedTurnSchema = z.object({
   createdAt: z.string(),
 });
 export type QueuedTurn = z.infer<typeof queuedTurnSchema>;
-export const queueActionSchema = z.enum(["list", "enqueue", "edit", "cancel", "resume"]);
+export const queueActionSchema = z.enum(["list", "enqueue", "edit", "cancel", "resume", "insert"]);

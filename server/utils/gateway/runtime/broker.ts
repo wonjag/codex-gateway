@@ -83,8 +83,13 @@ class ThreadBroker {
     return this.turnCommands.startQueuedTurn(host, threadId, input, onStarting);
   }
 
-  async steerTurn(host: HostRecord, threadId: string, input: TurnSteerInput) {
-    return this.turnCommands.steerTurn(host, threadId, input);
+  async steerTurn(
+    host: HostRecord,
+    threadId: string,
+    input: TurnSteerInput,
+    queued?: { cwd: string; onDispatch: () => boolean },
+  ) {
+    return this.turnCommands.steerTurn(host, threadId, input, queued);
   }
 
   async interruptTurn(host: HostRecord, threadId: string, turnId: string) {

@@ -58,6 +58,11 @@ export E2E_SUPPORTED_CODEX_VERSION="$(
 
 nas_local_run_dir=""
 nas_resume=0
+dependency_workspace="${E2E_DEPENDENCY_WORKSPACE:-}"
+if [ -n "$dependency_workspace" ] && [ -z "${E2E_NAS_ROOT:-}" ]; then
+  echo 'E2E_DEPENDENCY_WORKSPACE requires E2E_NAS_ROOT.' >&2
+  exit 2
+fi
 if [ -n "${E2E_NAS_RESUME_RUN_DIR:-}" ] && [ -z "${E2E_NAS_ROOT:-}" ]; then
   echo 'E2E_NAS_RESUME_RUN_DIR requires E2E_NAS_ROOT.' >&2
   exit 2
@@ -90,14 +95,27 @@ if [ -n "${E2E_NAS_ROOT:-}" ]; then
       echo 'The resume directory must be a direct run.* child of E2E_NAS_ROOT/runs.' >&2
       exit 2
     fi
-    for required in workspace/node_modules/.modules.yaml workspace/.output/nitro.json \
+    if [ -f "$E2E_NAS_RUN_DIR/.dependency-workspace" ]; then
+      saved_dependency_workspace="$(cat "$E2E_NAS_RUN_DIR/.dependency-workspace")"
+      if [ -n "$dependency_workspace" ] && [ "$dependency_workspace" != "$saved_dependency_workspace" ]; then
+        echo 'A resumed run must use its original dependency workspace.' >&2
+        exit 2
+      fi
+      dependency_workspace="$saved_dependency_workspace"
+    elif [ -n "$dependency_workspace" ]; then
+      echo 'Cannot replace dependencies when resuming an existing build; start a new run.' >&2
+      exit 2
+    fi
+    for required in workspace/.output/nitro.json \
       workspace/.output/server/index.mjs build-output/nitro.json build-output/server/index.mjs; do
       if [ ! -f "$E2E_NAS_RUN_DIR/$required" ]; then
         printf 'The resume directory is missing: %s\n' "$required" >&2
         exit 2
       fi
     done
-    if [ ! -d "$E2E_NAS_RUN_DIR/workspace/node_modules/.pnpm" ]; then
+    if [ -z "$dependency_workspace" ] && \
+      { [ ! -f "$E2E_NAS_RUN_DIR/workspace/node_modules/.modules.yaml" ] || \
+        [ ! -d "$E2E_NAS_RUN_DIR/workspace/node_modules/.pnpm" ]; }; then
       echo 'The resume directory is missing its installed pnpm virtual store.' >&2
       exit 2
     fi
@@ -134,6 +152,33 @@ if [ -n "${E2E_NAS_ROOT:-}" ]; then
       | tar -C "$E2E_NAS_RUN_DIR/workspace" -xf -
   fi
   compose+=(-f "$script_dir/docker-compose.nas.yml")
+  if [ -n "$dependency_workspace" ]; then
+    if [[ "$dependency_workspace" != /* ]] || [[ "$dependency_workspace" == *,* ]] || \
+      [ ! -d "$dependency_workspace" ]; then
+      echo 'E2E_DEPENDENCY_WORKSPACE must be an existing absolute directory without commas.' >&2
+      exit 2
+    fi
+    dependency_workspace="$(cd "$dependency_workspace" && pwd -P)"
+    dependency_run="${dependency_workspace%/*}"
+    if [ "$dependency_run" = "$E2E_NAS_RUN_DIR" ] || \
+      [ ! -f "$dependency_run/.completed-build" ]; then
+      echo 'Only a separate, completed and trusted Node24/Bookworm E2E workspace can supply dependencies.' >&2
+      exit 2
+    fi
+    # Serialize against E2E resumption and production dependency reuse. The caller must also
+    # ensure no external process is using this trusted, same-host Node24 installation.
+    exec {dependency_run_lock_fd}>"$dependency_run/.run.lock"
+    exec {dependency_lock_fd}>"$dependency_workspace/.codex-gateway-production-dependencies.lock"
+    if ! flock --nonblock "$dependency_run_lock_fd" || ! flock --nonblock "$dependency_lock_fd"; then
+      echo 'The dependency workspace is already in use, or its filesystem cannot lock it.' >&2
+      exit 2
+    fi
+    node --experimental-strip-types "$script_dir/dependency-workspace.ts" "$dependency_workspace" \
+      "$E2E_NAS_RUN_DIR/workspace" > "$E2E_NAS_RUN_DIR/dependency-compose.json"
+    printf '%s\n' "$dependency_workspace" > "$E2E_NAS_RUN_DIR/.dependency-workspace"
+    compose+=(-f "$E2E_NAS_RUN_DIR/dependency-compose.json")
+    echo "Reusing completed Node24 dependencies: $dependency_workspace"
+  fi
   echo "E2E source, dependencies and build artifacts: $E2E_NAS_RUN_DIR"
 fi
 
@@ -212,7 +257,9 @@ else
     cp -p "$E2E_NAS_RUN_DIR/workspace/pnpm-workspace.yaml" \
       "$E2E_NAS_RUN_DIR/.pnpm-workspace-before-install.yaml"
     "${compose[@]}" run --rm --no-deps build-runner \
-      bash -lc 'pnpm install --frozen-lockfile --store-dir /cache/pnpm-store --package-import-method copy'
+      bash -lc 'set -euo pipefail
+        pnpm install --frozen-lockfile --prod=false --store-dir /cache/pnpm-store --package-import-method copy
+        pnpm run postinstall'
     cp -p "$E2E_NAS_RUN_DIR/.pnpm-workspace-before-install.yaml" \
       "$E2E_NAS_RUN_DIR/workspace/pnpm-workspace.yaml"
   fi

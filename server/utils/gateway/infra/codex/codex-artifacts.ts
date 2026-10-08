@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { copyFile, lstat, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { CodexRemotePlatform } from "./codex-platform";
@@ -11,6 +11,8 @@ import { z } from "zod";
 const ARTIFACT_IDLE_TTL_MS = 30_000;
 const RELEASE_METADATA_TIMEOUT_MS = 30_000;
 const RELEASE_ASSET_TIMEOUT_MS = 10 * 60_000;
+const GITHUB_ASSET_API_URL =
+  /^https:\/\/api\.github\.com\/repos\/openai\/codex\/releases\/assets\/\d+$/;
 
 export interface CodexArtifactBundle {
   releaseTarget: CodexRemotePlatform["releaseTarget"];
@@ -85,10 +87,12 @@ async function prepareBundle(
   platform: CodexRemotePlatform,
 ): Promise<PreparedBundle> {
   const directory = await mkdtemp(join(tmpdir(), "codex-gateway-artifacts-"));
-  const release = await resolveStandaloneRelease(version, platform);
-  const archivePath = join(directory, release.assetName);
   try {
-    await downloadVerifiedArchive(release, archivePath);
+    const release = await resolveStandaloneRelease(version, platform);
+    const archivePath = join(directory, release.assetName);
+    if (!(await copyVerifiedCachedArchive(version, release, archivePath))) {
+      await downloadVerifiedArchive(release, archivePath);
+    }
     const file = await stat(archivePath);
     return {
       directory,
@@ -114,10 +118,41 @@ interface StandaloneRelease {
   sha256: string;
 }
 
+async function copyVerifiedCachedArchive(
+  version: string,
+  release: StandaloneRelease,
+  outputPath: string,
+) {
+  const cacheDirectory = process.env.CODEX_GATEWAY_ARTIFACT_CACHE_DIR;
+  if (cacheDirectory === undefined || cacheDirectory === "") return false;
+  if (!isAbsolute(cacheDirectory)) {
+    throw new Error("CODEX_GATEWAY_ARTIFACT_CACHE_DIR must be an absolute directory");
+  }
+  const cachedPath = join(cacheDirectory, version, release.assetName);
+  try {
+    if (!(await lstat(cachedPath)).isFile()) {
+      throw new Error(`Cached Codex archive ${release.assetName} is not a regular file`);
+    }
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
+    throw error;
+  }
+  await copyFile(cachedPath, outputPath);
+  // Verify the private snapshot that will be uploaded, not a potentially changing cache file.
+  const actual = await hashFile(outputPath, "sha256");
+  if (actual !== release.sha256) {
+    throw new Error(
+      `Cached Codex archive ${release.assetName} failed SHA-256 verification: expected ${release.sha256}, received ${actual}`,
+    );
+  }
+  return true;
+}
+
 interface ReleaseAsset {
   name: string;
   digest: string;
   url: string;
+  apiUrl?: string;
 }
 
 const releaseAssetSchema = z
@@ -125,11 +160,13 @@ const releaseAssetSchema = z
     name: z.string().min(1),
     digest: z.string().regex(/^sha256:[a-f0-9]{64}$/i),
     browser_download_url: z.url(),
+    url: z.url().optional(),
   })
-  .transform(({ name, digest, browser_download_url }) => ({
+  .transform(({ name, digest, browser_download_url, url }) => ({
     name,
     digest,
     url: browser_download_url,
+    apiUrl: url !== undefined && GITHUB_ASSET_API_URL.test(url) ? url : undefined,
   }));
 
 const releaseMetadataSchema = z.object({
@@ -171,7 +208,11 @@ async function resolveStandaloneRelease(
   // asset remains a verification-preserving fallback for temporarily unavailable infrastructure.
   return {
     assetName,
-    downloadUrls: [...new Set(candidates.map(({ url }) => url))],
+    downloadUrls: [
+      ...new Set(
+        candidates.flatMap(({ url, apiUrl }) => (apiUrl === undefined ? [url] : [apiUrl, url])),
+      ),
+    ],
     sha256,
   };
 }
@@ -191,7 +232,15 @@ async function downloadVerifiedArchive(release: StandaloneRelease, outputPath: s
   const failures: string[] = [];
   for (const url of release.downloadUrls) {
     try {
-      const response = await fetch(url, {
+      const isGithubApi = GITHUB_ASSET_API_URL.test(url);
+      const downloadUrl = new URL(url);
+      if (isGithubApi) {
+        // Avoid cached redirects whose signed release-assets URL has already expired.
+        downloadUrl.searchParams.set("download", "1");
+        downloadUrl.searchParams.set("nonce", String(Date.now()));
+      }
+      const response = await fetch(downloadUrl, {
+        headers: isGithubApi ? { accept: "application/octet-stream" } : undefined,
         signal: AbortSignal.timeout(RELEASE_ASSET_TIMEOUT_MS),
       });
       if (!response.ok || response.body === null) {

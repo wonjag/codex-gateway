@@ -54,7 +54,7 @@ export function useComposerTurnSubmit(input: {
   }
 
   const submitting = ref(false);
-  async function submitTurn(immediate = false) {
+  async function submitTurn(insert = false) {
     if (submitting.value) return;
     const text = input.turnText.value.trim();
     if (!text && !input.attachedFiles.value.length) return;
@@ -78,13 +78,15 @@ export function useComposerTurnSubmit(input: {
     } = navigation;
     if (hostId === null || threadId === null || projectId === null) return;
     const queue = useGatewayTurnQueueStore();
-    const running = useGatewayThreadRuntimeStore().statusFor(hostId, threadId) === "running";
+    const runtime = useGatewayThreadRuntimeStore();
+    const running = runtime.statusFor(hostId, threadId) === "running";
+    const expectedTurnId = runtime.activeTurnIdsByThreadKey[`${hostId}:${threadId}`];
     const shouldQueue =
-      !immediate && (running || (queue.queues[`${hostId}:${threadId}`]?.length ?? 0) > 0);
+      insert || running || (queue.queues[`${hostId}:${threadId}`]?.length ?? 0) > 0;
     const send = !shouldQueue
       ? threadTurns.sendTurn
       : (text: string, options: ComposerTurnOptions) =>
-          useGatewayTurnQueueStore().enqueue(hostId, threadId, projectId, text, options);
+          queue.enqueue(hostId, threadId, projectId, text, options, insert ? expectedTurnId : null);
     submitting.value = true;
     try {
       const accepted = await send(

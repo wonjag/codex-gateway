@@ -32,14 +32,16 @@ export const useGatewayTurnQueueStore = defineStore("gateway-turn-queue", () => 
     if (response.type !== "turn.queue.snapshot") throw new Error("Unexpected queue response");
     return response;
   }
-  function enqueue(
+  async function enqueue(
     hostId: number,
     threadId: string,
     projectId: number,
     text: string,
     options: ComposerTurnOptions,
+    insertIntoTurnId?: string | null,
   ) {
-    return action({
+    const id = createClientUserMessageId("turn");
+    const queued = await action({
       hostId,
       threadId,
       action: "enqueue",
@@ -49,9 +51,24 @@ export const useGatewayTurnQueueStore = defineStore("gateway-turn-queue", () => 
         threadId,
         projectId,
         text,
-        clientUserMessageId: createClientUserMessageId("turn"),
+        clientUserMessageId: id,
       },
     });
+    if (insertIntoTurnId !== null && insertIntoTurnId !== undefined && insertIntoTurnId !== "") {
+      try {
+        return await action({
+          hostId,
+          threadId,
+          action: "insert",
+          id,
+          expectedTurnId: insertIntoTurnId,
+        });
+      } catch {
+        // The input was durably queued even if insertion failed. Clear the accepted draft so a
+        // retry cannot enqueue another copy; the shared handler reports the insertion error.
+      }
+    }
+    return queued;
   }
   return { queues, receive, resetState, action, enqueue };
 });
