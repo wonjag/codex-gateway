@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+run_task() {
+  if [ "${CODEX_GATEWAY_LIMIT_TASK:-0}" = 1 ]; then
+    exec /usr/local/bin/codex-gateway-limited-task "$@"
+  fi
+  exec "$@"
+}
+
 # NAS workspaces are prepared once before the build. Application and browser containers reuse
 # that workspace, so synchronizing here would remove files another container is still reading.
 if [ "${E2E_NAS_MODE:-0}" = "1" ]; then
-  exec "$@"
+  run_task "$@"
 fi
 
 source_dir="${E2E_SOURCE_DIR:-/workspace/source}"
@@ -22,4 +29,4 @@ for entry in app i18n public scripts server shared tests components.json nuxt.co
   fi
 done
 
-exec "$@"
+run_task "$@"

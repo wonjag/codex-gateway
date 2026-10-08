@@ -39,6 +39,10 @@ interface RemoteEnv {
 
 export async function startDockerEnvironment() {
   await mkdir(runtimeDir, { recursive: true });
+  const fixtureProfile = process.env.E2E_FIXTURE_PROFILE ?? "full";
+  if (fixtureProfile !== "full" && fixtureProfile !== "core") {
+    throw new Error("E2E_FIXTURE_PROFILE must be full or core");
+  }
   const password = firstNonEmptyString([process.env.E2E_REMOTE_PASSWORD]) ?? "codex";
   const shared = {
     port: firstNonEmptyString([process.env.E2E_REMOTE_PORT]) ?? "22",
@@ -92,8 +96,10 @@ export async function startDockerEnvironment() {
     mfaCode: "123456",
   };
 
+  const selectedEnvironments =
+    fixtureProfile === "core" ? [environments[0]!] : [...environments, mfaEnvironment];
   await Promise.all(
-    [...environments, mfaEnvironment].map(async (env) => {
+    selectedEnvironments.map(async (env) => {
       try {
         await waitForSsh(env.host, env.port);
       } catch (error: unknown) {
@@ -101,7 +107,7 @@ export async function startDockerEnvironment() {
       }
     }),
   );
-  for (const env of [...environments, mfaEnvironment]) {
+  for (const env of selectedEnvironments) {
     try {
       await prepareRemoteCodexHome(env);
     } catch (error: unknown) {
@@ -111,11 +117,15 @@ export async function startDockerEnvironment() {
     }
   }
   await writeRemoteImage(environments[0]!);
-  await Promise.all([
-    writeFile(envFile, JSON.stringify(environments[0], null, 2)),
-    writeFile(upgradeEnvFile, JSON.stringify(environments, null, 2)),
-    writeFile(mfaEnvFile, JSON.stringify(mfaEnvironment, null, 2)),
-  ]);
+  await writeFile(envFile, JSON.stringify(environments[0], null, 2));
+  if (fixtureProfile === "full") {
+    await Promise.all([
+      writeFile(upgradeEnvFile, JSON.stringify(environments, null, 2)),
+      writeFile(mfaEnvFile, JSON.stringify(mfaEnvironment, null, 2)),
+    ]);
+  } else {
+    await Promise.all([rm(upgradeEnvFile, { force: true }), rm(mfaEnvFile, { force: true })]);
+  }
   return environments[0];
 }
 

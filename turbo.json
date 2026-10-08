@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": ["RAYON_NUM_THREADS", "UV_THREADPOOL_SIZE", "NODE_OPTIONS"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

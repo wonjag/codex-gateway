@@ -56,11 +56,19 @@ export async function readRemoteEnv() {
 }
 
 export async function readUpgradeRemoteEnvs() {
+  requireExtendedFixtures();
   return z.array(remoteCodexEnvSchema).parse(JSON.parse(await readFile(upgradeEnvFile, "utf8")));
 }
 
 export async function readMfaRemoteEnv() {
+  requireExtendedFixtures();
   return remoteCodexEnvSchema.parse(JSON.parse(await readFile(mfaEnvFile, "utf8")));
+}
+
+function requireExtendedFixtures() {
+  if (process.env.E2E_FIXTURE_PROFILE === "core") {
+    throw new Error("This test requires E2E_FIXTURE_PROFILE=full (upgrade/MFA fixtures)");
+  }
 }
 
 export async function readContainerCodexVersion(remote: RemoteCodexEnv) {
