@@ -5,6 +5,7 @@ x-nas-environment: &nas-environment
   COREPACK_HOME: /cache/corepack
   XDG_CACHE_HOME: /cache/xdg
   NODE_USE_ENV_PROXY: "1"
+  TURBO_CACHE_DIR: /cache/turbo
   HTTP_PROXY: ${HTTP_PROXY:-}
   HTTPS_PROXY: ${HTTPS_PROXY:-}
   http_proxy: ${HTTP_PROXY:-}
@@ -54,7 +55,7 @@ services:
       CODEX_GATEWAY_ARTIFACT_CACHE_DIR: /codex-artifact-cache
     volumes:
       - ${E2E_LOCAL_RUN_DIR:?}/data:/workspace/codex-gateway/.data-e2e
-      - ${E2E_NAS_RUN_DIR:?}/build-output:/e2e-output:ro
+      - ${E2E_NAS_RUN_DIR:?}/workspace/.output:/e2e-output:ro
       - ${E2E_NAS_RUN_DIR:?}/gateway-tmp:/nas-tmp
       - ${E2E_CODEX_ARTIFACT_CACHE:-./docker/artifact-cache}:/codex-artifact-cache:ro
 
@@ -71,7 +72,7 @@ services:
       - ${E2E_NAS_RUN_DIR:?}/workspace:/e2e-config:ro
 
   test-runner:
-    image: codex-gateway-e2e-nas-runner
+    image: ${E2E_BROWSER_RUNTIME_IMAGE:-codex-gateway-e2e-nas-runner}
     environment:
       <<: *nas-environment
       E2E_APT_DIRECT: ${E2E_APT_DIRECT:-0}

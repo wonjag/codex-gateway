@@ -7,6 +7,33 @@ compose_file="$script_dir/docker-compose.yml"
 project_name="${E2E_COMPOSE_PROJECT_NAME:-codex-gateway-e2e}"
 compose=(docker compose --ansi never --progress "${E2E_BUILD_PROGRESS:-quiet}" -p "$project_name" -f "$compose_file")
 
+source "$project_dir/scripts/heavy-job-guard.sh"
+nas_local_run_dir=""
+compose_started=0
+ssh_fixtures=(ssh-target)
+cleanup() {
+  local status=$?
+  if [ "$compose_started" -eq 1 ]; then
+    if [ "$status" -ne 0 ]; then
+      "${compose[@]}" logs --no-color gateway-under-test "${ssh_fixtures[@]}" \
+        browser-preview-ingress bark-target >&2 || true
+    fi
+    if "${compose[@]}" down --remove-orphans >/dev/null 2>&1; then
+      [ -z "$nas_local_run_dir" ] || rm -rf "$nas_local_run_dir"
+    fi
+  elif [ -n "$nas_local_run_dir" ]; then
+    rm -rf "$nas_local_run_dir"
+  fi
+  gateway_heavy_job_end "$status"
+}
+trap cleanup EXIT
+
+phase_started_at=$SECONDS
+finish_phase() {
+  printf '[e2e] phase=%s elapsed_seconds=%s\n' "$1" "$((SECONDS - phase_started_at))"
+  phase_started_at=$SECONDS
+}
+
 # Normalize archive metadata while retaining file contents, names, permissions, and symlinks.
 # Browser tests and orchestration can change without invalidating the app or fixture images.
 source_fingerprint() {
@@ -30,7 +57,7 @@ output_fingerprint() {
 image_fingerprint() {
   local image_names
   image_names="$("${compose[@]}" config --images \
-    build-runner ssh-target ssh-target-legacy-node ssh-target-npm-codex ssh-target-mfa | sort -u)"
+    build-runner "${ssh_fixtures[@]}" | sort -u)"
   while IFS= read -r image_name; do
     docker image inspect --format '{{.Id}}' "$image_name" || return 1
   done <<< "$image_names" | sha256sum | cut -d ' ' -f 1
@@ -45,6 +72,51 @@ if [ "${1:-}" = "--" ]; then
   shift
 fi
 
+export E2E_FIXTURE_PROFILE="${E2E_FIXTURE_PROFILE:-full}"
+case "$E2E_FIXTURE_PROFILE" in
+  core) ;;
+  full)
+    compose+=(--profile extended)
+    ssh_fixtures+=(ssh-target-legacy-node ssh-target-npm-codex ssh-target-mfa)
+    ;;
+  *) echo 'E2E_FIXTURE_PROFILE must be full or core.' >&2; exit 2 ;;
+esac
+export E2E_BROWSERS="${E2E_BROWSERS:-chromium webkit}"
+case "$E2E_BROWSERS" in
+  'chromium webkit'|'webkit chromium') export E2E_BROWSERS='chromium webkit' ;;
+  chromium|webkit) ;;
+  *) echo 'E2E_BROWSERS must be chromium, webkit, or "chromium webkit".' >&2; exit 2 ;;
+esac
+# Explicitly constrain Playwright projects when installing only one engine. Reject an
+# incompatible explicit project before preparing any build or fixture.
+test_arguments=("$@")
+selected_projects=()
+for ((arg_index=0; arg_index<${#test_arguments[@]}; arg_index++)); do
+  argument="${test_arguments[$arg_index]}"
+  if [[ "$argument" == --project=* ]]; then
+    selected_projects+=("${argument#--project=}")
+  elif [ "$argument" = --project ]; then
+    arg_index=$((arg_index + 1))
+    selected_projects+=("${test_arguments[$arg_index]:-}")
+  fi
+done
+if [ "$E2E_BROWSERS" != 'chromium webkit' ]; then
+  for selected_project in "${selected_projects[@]}"; do
+    case "$E2E_BROWSERS:$selected_project" in
+      chromium:chromium|chromium:mobile-chrome|webkit:mobile-webkit-core-scroll) ;;
+      *) echo 'The explicit Playwright project does not match E2E_BROWSERS.' >&2; exit 2 ;;
+    esac
+  done
+  if [ "${#selected_projects[@]}" -eq 0 ]; then
+    if [ "$E2E_BROWSERS" = chromium ]; then
+      set -- "$@" --project=chromium --project=mobile-chrome
+    else
+      set -- "$@" --project=mobile-webkit-core-scroll
+    fi
+  fi
+fi
+
+gateway_heavy_job_begin e2e /
 export E2E_UID="${E2E_UID:-12345}"
 export E2E_GID="${E2E_GID:-12345}"
 export E2E_CODEX_HOME="${E2E_CODEX_HOME:-$HOME/.codex}"
@@ -56,7 +128,6 @@ export E2E_SUPPORTED_CODEX_VERSION="$(
     "import('./server/utils/gateway/infra/codex/codex-version.ts').then(({ SUPPORTED_CODEX_VERSION }) => process.stdout.write(SUPPORTED_CODEX_VERSION))"
 )"
 
-nas_local_run_dir=""
 nas_resume=0
 dependency_workspace="${E2E_DEPENDENCY_WORKSPACE:-}"
 if [ -n "$dependency_workspace" ] && [ -z "${E2E_NAS_ROOT:-}" ]; then
@@ -106,8 +177,7 @@ if [ -n "${E2E_NAS_ROOT:-}" ]; then
       echo 'Cannot replace dependencies when resuming an existing build; start a new run.' >&2
       exit 2
     fi
-    for required in workspace/.output/nitro.json \
-      workspace/.output/server/index.mjs build-output/nitro.json build-output/server/index.mjs; do
+    for required in workspace/.output/nitro.json workspace/.output/server/index.mjs; do
       if [ ! -f "$E2E_NAS_RUN_DIR/$required" ]; then
         printf 'The resume directory is missing: %s\n' "$required" >&2
         exit 2
@@ -182,20 +252,7 @@ if [ -n "${E2E_NAS_ROOT:-}" ]; then
   echo "E2E source, dependencies and build artifacts: $E2E_NAS_RUN_DIR"
 fi
 
-cleanup() {
-  local status=$?
-  if [ "$status" -ne 0 ]; then
-    "${compose[@]}" logs --no-color \
-      gateway-under-test ssh-target ssh-target-legacy-node ssh-target-npm-codex \
-      ssh-target-mfa browser-preview-ingress bark-target >&2 || true
-  fi
-  if "${compose[@]}" down --remove-orphans >/dev/null 2>&1; then
-    if [ -n "$nas_local_run_dir" ]; then
-      rm -rf "$nas_local_run_dir"
-    fi
-  fi
-}
-trap cleanup EXIT
+finish_phase source-preparation
 
 if [ "$nas_resume" -eq 1 ]; then
   nas_source_hash="$(source_fingerprint "$E2E_NAS_RUN_DIR/workspace")"
@@ -203,16 +260,14 @@ if [ "$nas_resume" -eq 1 ]; then
     echo 'Application, Nuxt layer, fixture, or dependency inputs changed; start a new NAS run.' >&2
     exit 2
   fi
-  nas_output_hash="$(output_fingerprint "$E2E_NAS_RUN_DIR/build-output")"
-  if [ "$nas_output_hash" != "$(output_fingerprint "$E2E_NAS_RUN_DIR/workspace/.output")" ]; then
-    echo 'The saved production output copy is incomplete or has changed.' >&2
-    exit 2
-  fi
+  # Gateway mounts this one completed artifact read-only. Validate it against the recorded
+  # content hash; older v1 runs recorded the same bytes after copying them to build-output.
+  nas_output_hash="$(output_fingerprint "$E2E_NAS_RUN_DIR/workspace/.output")"
   node --input-type=module -e '
     import { readFileSync } from "node:fs";
     const metadata = JSON.parse(readFileSync(process.argv[1], "utf8"));
     if (metadata.preset !== "node-server" || metadata.framework?.name !== "nuxt") process.exit(1);
-  ' "$E2E_NAS_RUN_DIR/build-output/nitro.json"
+  ' "$E2E_NAS_RUN_DIR/workspace/.output/nitro.json"
   nas_image_hash="$(image_fingerprint)"
   nas_marker="$E2E_NAS_RUN_DIR/.completed-build"
   if [ -f "$nas_marker" ]; then
@@ -246,11 +301,15 @@ if [ "$nas_resume" -eq 1 ]; then
   done < <(find "$E2E_NAS_RUN_DIR/workspace/tests" \( -type f -o -type l \) -print0)
   tar -C "$project_dir" -cf - tests | tar -C "$E2E_NAS_RUN_DIR/workspace" -xf -
   echo 'Verified saved NAS build; recreating the local test database.'
+  compose_started=1
   "${compose[@]}" run --rm --no-deps build-runner \
     bash -lc 'node scripts/create-user.mjs "$E2E_GATEWAY_USERNAME" "$E2E_GATEWAY_PASSWORD"'
+  finish_phase reuse-completed-build
 else
-  "${compose[@]}" build \
-    build-runner ssh-target ssh-target-legacy-node ssh-target-npm-codex ssh-target-mfa
+  gateway_heavy_job_check_space /
+  "${compose[@]}" build build-runner "${ssh_fixtures[@]}"
+  finish_phase fixture-images
+  compose_started=1
   if [ -n "${E2E_NAS_ROOT:-}" ]; then
     # pnpm can prune expired minimumReleaseAgeExclude entries even with a frozen lockfile.
     # Preserve the original build input after installation so a completed run remains comparable.
@@ -259,38 +318,43 @@ else
     "${compose[@]}" run --rm --no-deps build-runner \
       bash -lc 'set -euo pipefail
         pnpm install --frozen-lockfile --prod=false --store-dir /cache/pnpm-store --package-import-method copy
-        pnpm run postinstall'
+        if [ ! -f .nuxt/nuxt.d.ts ]; then pnpm run postinstall; fi'
     cp -p "$E2E_NAS_RUN_DIR/.pnpm-workspace-before-install.yaml" \
       "$E2E_NAS_RUN_DIR/workspace/pnpm-workspace.yaml"
   fi
-  # Build, application server, and browser runner use separate 2 GiB cgroups. Sharing only the
-  # gateway network namespace preserves production-like nip.io preview routing.
+  finish_phase dependencies
+  gateway_heavy_job_check_space /
+  # Build and browser processes have CPU affinity/priority limits even without cgroups.
+  # Docker memory limits additionally require working daemon cgroup controllers.
   "${compose[@]}" run --rm build-runner \
-    bash -lc 'rm -rf .output .nuxt .data-e2e/* /e2e-output/* && pnpm exec nuxt build --logLevel=silent --extends ./tests/e2e/nuxt-layer && cp -a .output/. /e2e-output/ && node scripts/create-user.mjs "$E2E_GATEWAY_USERNAME" "$E2E_GATEWAY_PASSWORD"'
+    bash -lc 'rm -rf .output .nuxt .data-e2e/* /e2e-output/* && pnpm exec nuxt build --logLevel=silent --extends ./tests/e2e/nuxt-layer && if [ "${E2E_NAS_MODE:-0}" != 1 ]; then cp -a .output/. /e2e-output/; fi && node scripts/create-user.mjs "$E2E_GATEWAY_USERNAME" "$E2E_GATEWAY_PASSWORD"'
   if [ -n "${E2E_NAS_ROOT:-}" ]; then
     nas_source_hash="$(source_fingerprint "$E2E_NAS_RUN_DIR/workspace")"
-    nas_output_hash="$(output_fingerprint "$E2E_NAS_RUN_DIR/build-output")"
+    nas_output_hash="$(output_fingerprint "$E2E_NAS_RUN_DIR/workspace/.output")"
     nas_image_hash="$(image_fingerprint)"
     printf 'v1\n%s\n%s\n%s\n' "$nas_source_hash" "$nas_output_hash" "$nas_image_hash" \
       > "$E2E_NAS_RUN_DIR/.completed-build.tmp"
     mv "$E2E_NAS_RUN_DIR/.completed-build.tmp" "$E2E_NAS_RUN_DIR/.completed-build"
   fi
+  finish_phase application-build
 fi
+if [ -n "${E2E_NAS_ROOT:-}" ]; then
+  gateway_heavy_job_check_space /
+  export E2E_BROWSER_RUNTIME_IMAGE
+  E2E_BROWSER_RUNTIME_IMAGE="$("$script_dir/prepare-browser-runtime.sh" \
+    "${dependency_workspace:-$E2E_NAS_RUN_DIR/workspace}" \
+    "$E2E_NAS_ROOT/cache/browser-runtime" codex-gateway-e2e-nas-runner)"
+  finish_phase browser-os-image
+fi
+gateway_heavy_job_check_space /
 "${compose[@]}" up -d --wait \
   gateway-under-test browser-preview-ingress
 "${compose[@]}" run --rm test-runner \
   bash -lc 'set -euo pipefail
     if [ "${E2E_NAS_MODE:-}" = "1" ]; then
-      if [ "${E2E_APT_DIRECT:-0}" = "1" ]; then
-        # Apt does not consistently honor NO_PROXY for direct regional mirrors. Limit the
-        # override to OS dependencies; browser downloads and tests retain their normal proxy.
-        env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy \
-          pnpm exec playwright install-deps chromium webkit
-      else
-        pnpm exec playwright install-deps chromium webkit
-      fi
-      pnpm exec playwright install chromium webkit
-      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+      read -r -a browsers <<< "$E2E_BROWSERS"
+      pnpm exec playwright install "${browsers[@]}"
     fi
     exec pnpm exec playwright test --reporter=dot "$@"' \
   e2e "$@"
+finish_phase browser-tests

@@ -33,6 +33,10 @@ fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
+# Serialize production builds with E2E and reject a run before it consumes local database space.
+source "$script_dir/heavy-job-guard.sh"
+gateway_heavy_job_begin production-build
+trap 'gateway_heavy_job_end "$?"' EXIT
 build_commit="$(git -C "$project_dir" rev-parse HEAD)"
 if ! git -C "$project_dir" cat-file -e "$build_commit:Dockerfile.runtime"; then
   echo 'Dockerfile.runtime must be committed before building committed HEAD.' >&2
@@ -59,7 +63,8 @@ dependency_mount_args=()
 if [ -n "$dependency_workspace" ]; then
   # Only reuse a trusted, finished Node24/bookworm container's dependencies on this Docker host.
   # These mounts are writable: pnpm still validates the lockfile and rebuilds workspace packages.
-  # The caller must stop the original build/tests first; this lock serializes only this script.
+  # The shared host guard serializes supported build/test entrypoints; this additional lock also
+  # protects this particular dependency workspace. Stop any external users of the workspace.
   exec {dependency_lock_fd}>"$dependency_workspace/.codex-gateway-production-dependencies.lock"
   if ! flock --nonblock "$dependency_lock_fd"; then
     echo 'The dependency workspace is already in use, or its filesystem cannot lock it.' >&2
@@ -137,16 +142,26 @@ docker run --rm --memory 2g --memory-swap 2g \
   "${dependency_mount_args[@]}" \
   --env COREPACK_HOME=/cache/corepack \
   --env XDG_CACHE_HOME=/cache/xdg \
+  --env TURBO_CACHE_DIR=/cache/turbo \
+  --env TURBO_CONCURRENCY="${TURBO_CONCURRENCY:-1}" \
+  --env CODEX_GATEWAY_TASK_CPUS="${CODEX_GATEWAY_TASK_CPUS:-2}" \
+  --env RAYON_NUM_THREADS="${RAYON_NUM_THREADS:-2}" \
+  --env UV_THREADPOOL_SIZE="${UV_THREADPOOL_SIZE:-2}" \
   --env NODE_USE_ENV_PROXY=1 \
   --env NODE_OPTIONS=--max-old-space-size=1536 \
   "${runtime_proxy_args[@]}" \
   node:24-bookworm \
-  bash -lc 'set -euo pipefail
+  bash scripts/limited-task.sh bash -lc 'set -euo pipefail
     corepack enable
     pnpm install --frozen-lockfile --prod=false --store-dir /cache/pnpm-store --package-import-method copy
-    # Reusing node_modules can make pnpm skip lifecycle scripts, but this fresh source export
-    # still needs its workspace package outputs and generated Nuxt types.
-    pnpm run postinstall
+    # A fresh git archive contains no .nuxt directory. Its final postinstall step generates this
+    # file; if install already ran that lifecycle, do not rebuild/typecheck all packages twice.
+    # Keep normal install hooks enabled so native dependency builds still run when needed.
+    if [ ! -f .nuxt/nuxt.d.ts ]; then
+      pnpm run postinstall
+    else
+      echo "[build-cache] postinstall completed during dependency installation"
+    fi
     pnpm exec nuxt build --logLevel silent'
 
 test -f "$build_workspace/.output/server/index.mjs"
@@ -156,6 +171,7 @@ cp "$build_workspace/Dockerfile.runtime" "$runtime_context/Dockerfile.runtime"
 
 # Only the production output and management scripts enter Docker's final image. Retain the
 # private source snapshot on the data disk for diagnosis and commit provenance.
+gateway_heavy_job_check_space
 DOCKER_BUILDKIT=1 docker build \
   --file "$runtime_context/Dockerfile.runtime" \
   --tag "$image_tag" \

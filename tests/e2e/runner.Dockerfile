@@ -7,6 +7,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV NODE_USE_ENV_PROXY=1
 
 ARG E2E_DEBIAN_MIRROR
+ARG CODEX_GATEWAY_TASK_CPUS=2
 RUN if [ -n "$E2E_DEBIAN_MIRROR" ]; then \
       sed -i "s|http://deb.debian.org|${E2E_DEBIAN_MIRROR%/}|g" /etc/apt/sources.list.d/debian.sources; \
     fi
@@ -16,7 +17,8 @@ RUN corepack enable
 WORKDIR /workspace/codex-gateway
 
 COPY tests/e2e/runner-entrypoint.sh /usr/local/bin/codex-gateway-e2e-runner
-RUN chmod +x /usr/local/bin/codex-gateway-e2e-runner
+COPY scripts/limited-task.sh /usr/local/bin/codex-gateway-limited-task
+RUN chmod +x /usr/local/bin/codex-gateway-e2e-runner /usr/local/bin/codex-gateway-limited-task
 
 ENTRYPOINT ["codex-gateway-e2e-runner"]
 
@@ -33,10 +35,12 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY patches ./patches
 COPY packages ./packages
 RUN --mount=type=cache,id=codex-gateway-e2e-pnpm-store,target=/pnpm/store \
-  pnpm install --frozen-lockfile
+  CODEX_GATEWAY_TASK_CPUS="$CODEX_GATEWAY_TASK_CPUS" \
+    /usr/local/bin/codex-gateway-limited-task pnpm install --frozen-lockfile
 
 # Install the browser revision required by the lockfile without depending on a
 # separately published Playwright image tag.
-RUN pnpm exec playwright install --with-deps chromium webkit
+RUN CODEX_GATEWAY_TASK_CPUS="$CODEX_GATEWAY_TASK_CPUS" \
+  /usr/local/bin/codex-gateway-limited-task pnpm exec playwright install --with-deps chromium webkit
 
 COPY . /workspace/source

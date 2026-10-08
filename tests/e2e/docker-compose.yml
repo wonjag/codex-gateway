@@ -35,6 +35,7 @@ services:
     <<: *ssh-target
 
   ssh-target-legacy-node:
+    profiles: [extended]
     build:
       context: ./docker
       target: legacy-node
@@ -46,6 +47,7 @@ services:
     <<: *ssh-target
 
   ssh-target-npm-codex:
+    profiles: [extended]
     build:
       context: ./docker
       target: npm-codex
@@ -58,6 +60,7 @@ services:
     <<: *ssh-target
 
   ssh-target-mfa:
+    profiles: [extended]
     build:
       context: ./docker
       target: mfa-runtime
@@ -78,12 +81,14 @@ services:
       context: ../..
       dockerfile: tests/e2e/runner.Dockerfile
       args:
+        CODEX_GATEWAY_TASK_CPUS: ${CODEX_GATEWAY_TASK_CPUS:-2}
         <<: *build-proxy
         E2E_DEBIAN_MIRROR: ${E2E_DEBIAN_MIRROR:-}
     environment:
-      # Keep enough cgroup headroom for Rolldown/Nitro native allocations while allowing the
-      # JavaScript heap to finish the production bundle. The container remains capped at 2 GiB.
+      # V8 heap policy is independent of Docker limits, which need a working cgroup controller.
       NODE_OPTIONS: --max-old-space-size=1536
+      CODEX_GATEWAY_LIMIT_TASK: "1"
+      CODEX_GATEWAY_TASK_CPUS: ${CODEX_GATEWAY_TASK_CPUS:-2}
       CODEX_GATEWAY_DB_PATH: /workspace/codex-gateway/.data-e2e/codex-gateway.db
       E2E_GATEWAY_USERNAME: ${E2E_GATEWAY_USERNAME:-e2e}
       E2E_GATEWAY_PASSWORD: ${E2E_GATEWAY_PASSWORD:-codex-gateway-e2e-password}
@@ -95,11 +100,19 @@ services:
     image: codex-gateway-e2e-runner
     mem_limit: 2g
     depends_on:
-      - ssh-target
-      - ssh-target-legacy-node
-      - ssh-target-npm-codex
-      - ssh-target-mfa
-      - bark-target
+      ssh-target:
+        condition: service_started
+      ssh-target-legacy-node:
+        condition: service_started
+        required: false
+      ssh-target-npm-codex:
+        condition: service_started
+        required: false
+      ssh-target-mfa:
+        condition: service_started
+        required: false
+      bark-target:
+        condition: service_started
     environment:
       <<: *build-proxy
       NODE_USE_ENV_PROXY: "1"
@@ -116,8 +129,8 @@ services:
     volumes:
       - build-output:/e2e-output:ro
       - e2e-data:/workspace/codex-gateway/.data-e2e
-    # Exercise the same V8 memory policy as production; the wider 2 GiB cgroup remains available
-    # to Playwright's shared test topology and native browser/runtime allocations.
+    # Exercise the same V8 policy as production. Docker's separate memory limit only applies
+    # when the daemon has working cgroup controllers.
     command: ["node", "--expose-gc", "--max-old-space-size=512", "/e2e-output/server/index.mjs"]
     healthcheck:
       test:
@@ -157,6 +170,10 @@ services:
     environment:
       CI: ${CI:-}
       E2E_CONTAINERIZED: "1"
+      E2E_FIXTURE_PROFILE: ${E2E_FIXTURE_PROFILE:-full}
+      E2E_BROWSERS: ${E2E_BROWSERS:-chromium webkit}
+      CODEX_GATEWAY_LIMIT_TASK: "1"
+      CODEX_GATEWAY_TASK_CPUS: ${CODEX_GATEWAY_TASK_CPUS:-2}
       E2E_DATABASE_PREPARED: "1"
       E2E_SOURCE_DIR: /workspace/source
       E2E_CODEX_HOME: /codex-auth
