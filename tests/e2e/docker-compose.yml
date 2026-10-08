@@ -61,6 +61,8 @@ services:
     build:
       context: ./docker
       target: mfa-runtime
+      additional_contexts:
+        codex-release-cache: ${E2E_CODEX_ARTIFACT_CACHE:-./docker/artifact-cache}
       args:
         <<: *build-proxy
         E2E_DEBIAN_MIRROR: ${E2E_DEBIAN_MIRROR:-}

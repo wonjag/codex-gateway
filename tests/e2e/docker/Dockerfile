@@ -17,23 +17,10 @@ FROM node:22-bookworm AS current-codex-runtime
 
 ARG CURRENT_CODEX_CLI_VERSION
 ARG CODEX_RELEASE_TARGET=x86_64-unknown-linux-musl
-RUN test -n "${CURRENT_CODEX_CLI_VERSION}" \
-  && asset="codex-package-${CODEX_RELEASE_TARGET}.tar.gz" \
-  && downloaded=0 \
-  && for release_base in \
-       "https://releases.openai.com/codex/releases/${CURRENT_CODEX_CLI_VERSION}" \
-       "https://github.com/openai/codex/releases/download/rust-v${CURRENT_CODEX_CLI_VERSION}"; do \
-       if curl -fsSL --connect-timeout 30 --max-time 600 "$release_base/$asset" -o /tmp/codex-package.tar.gz \
-         && curl -fsSL --connect-timeout 30 --max-time 60 "$release_base/codex-package_SHA256SUMS" -o /tmp/codex-package_SHA256SUMS; then \
-         downloaded=1; break; \
-       fi; \
-     done \
-  && test "$downloaded" = 1 \
-  && expected="$(awk -v asset="$asset" '$2 == asset && length($1) == 64 { print tolower($1); found = 1 } END { exit found ? 0 : 1 }' /tmp/codex-package_SHA256SUMS)" \
-  && printf '%s  %s\n' "$expected" /tmp/codex-package.tar.gz | sha256sum -c - \
-  && mkdir -p /opt/codex-standalone \
-  && tar -xzf /tmp/codex-package.tar.gz -C /opt/codex-standalone \
-  && rm -f /tmp/codex-package.tar.gz /tmp/codex-package_SHA256SUMS
+COPY download-codex.sh /tmp/download-codex.sh
+RUN --mount=type=bind,from=codex-release-cache,target=/codex-cache \
+  bash /tmp/download-codex.sh "${CURRENT_CODEX_CLI_VERSION}" "${CODEX_RELEASE_TARGET}" /opt/codex-standalone /codex-cache \
+  && rm /tmp/download-codex.sh
 
 FROM debian:bookworm-slim AS ssh-base
 COPY --from=preview-dependencies /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt

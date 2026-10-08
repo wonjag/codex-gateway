@@ -51,10 +51,12 @@ services:
     environment:
       E2E_NAS_MODE: "1"
       TMPDIR: /nas-tmp
+      CODEX_GATEWAY_ARTIFACT_CACHE_DIR: /codex-artifact-cache
     volumes:
       - ${E2E_LOCAL_RUN_DIR:?}/data:/workspace/codex-gateway/.data-e2e
       - ${E2E_NAS_RUN_DIR:?}/build-output:/e2e-output:ro
       - ${E2E_NAS_RUN_DIR:?}/gateway-tmp:/nas-tmp
+      - ${E2E_CODEX_ARTIFACT_CACHE:-./docker/artifact-cache}:/codex-artifact-cache:ro
 
   browser-preview-ingress:
     command:
