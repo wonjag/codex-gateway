@@ -6,6 +6,7 @@ import { execRemoteSsh } from "./helpers/remote-codex";
 
 const listResponseSchema = z.object({
   data: z.array(z.object({ id: z.string(), parentThreadId: z.string().nullable() }).loose()),
+  nextCursor: z.string().nullable().optional(),
   projects: z.array(z.object({ remotePath: z.string() }).loose()),
 });
 
@@ -21,7 +22,7 @@ test("main thread pagination excludes children while project discovery retains e
   const childIds = Array.from({ length: 55 }, () => randomUUID());
   const entries = [mainId, ...childIds].map((id, index) => {
     const timestamp = new Date(Date.UTC(2026, 0, 2, 3, 4, index)).toISOString();
-    const child = index > 0;
+    const child = index === 55;
     const threadCwd = index === 55 ? childCwd : cwd;
     const message = child ? `Child work ${index}` : "Original main session name";
     const records = [
@@ -93,14 +94,41 @@ touch -d ${shellQuote(entry.timestamp)} "$rollout_dir/${entry.filename}"`,
   expect(allSources.data.some((thread) => thread.id === mainId)).toBe(false);
 
   const mainPage = await list(`${projectQuery}&mainThreadOnly=true`);
-  expect(mainPage.data.map((thread) => thread.id)).toEqual([mainId]);
+  expect(mainPage.data).toHaveLength(50);
+  expect(mainPage.nextCursor).toEqual(expect.any(String));
+  const mainPageIds = new Set(mainPage.data.map((thread) => thread.id));
+  const olderMainPage = await list(
+    `${projectQuery}&mainThreadOnly=true&cursor=${encodeURIComponent(mainPage.nextCursor!)}`,
+  );
+  expect(olderMainPage.data).toHaveLength(5);
+  expect(olderMainPage.data.some((thread) => mainPageIds.has(thread.id))).toBe(false);
+  expect(olderMainPage.nextCursor).toBeNull();
 
-  // A main-only host page has no native next cursor here, but discovery must independently
-  // start an all-source scan and retain the project that contains only a child thread.
+  // A broad host page discovers every source in the background, including the project
+  // containing only a child thread. Wait for that index before exercising the project UI,
+  // whose fast path intentionally reads the remote state index.
   await list("limit=1&mainThreadOnly=true");
   await expect
     .poll(async () => (await list("limit=1&mainThreadOnly=true")).projects.map((p) => p.remotePath))
     .toContain(childCwd);
+
+  // The project home consumes the same native cursor. The first 50 rows render immediately;
+  // loading the next page appends the remaining sessions without replacing existing rows.
+  const project = await remoteWorkspace.addProject(host.id, `pagination-${Date.now()}`, cwd);
+  await page.getByTestId(`project-button-${project.id}`).click();
+  const projectPage = page.getByTestId("project-thread-list");
+  await expect(projectPage).toBeVisible();
+  await expect(projectPage.getByTestId("load-more-project-threads")).toBeVisible({
+    timeout: 30_000,
+  });
+  const firstPageRows = projectPage.locator('[data-testid^="project-thread-row-"]');
+  await expect(firstPageRows).toHaveCount(50);
+  await projectPage.getByTestId("load-more-project-threads").click();
+  await expect(projectPage.getByTestId(`project-thread-row-${mainId}`)).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(firstPageRows).toHaveCount(55);
+  await expect(projectPage.getByTestId("load-more-project-threads")).toHaveCount(0);
 
   const childPage = await list(`cwd=${encodeURIComponent(childCwd)}&limit=50`);
   expect(childPage.data.map((thread) => thread.id)).toEqual([childIds[54]]);

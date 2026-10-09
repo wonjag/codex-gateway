@@ -31,6 +31,7 @@ const { t } = useI18n();
 const { projects } = storeToRefs(catalog);
 const { selectedHostId, selectedProjectId, selectedThreadId, threads } = storeToRefs(navigation);
 const { currentThread, loading } = storeToRefs(threadView);
+const { threadListNextCursor, threadListLoadingMore } = storeToRefs(navigation);
 const selectedProject = computed(() => projectById(projects.value, selectedProjectId.value));
 const { longPressTriggered, longPressContextMenuHandlers } = useLongPressContextMenu();
 
@@ -136,7 +137,23 @@ function openThread(threadId: string) {
       </ContextMenu>
     </div>
 
-    <div v-else class="rounded-2xl bg-canvas-soft px-5 py-4 text-[0.9375rem] leading-7 text-ink">
+    <div v-if="threadListNextCursor" class="mt-5 flex justify-center">
+      <Button
+        data-testid="load-more-project-threads"
+        variant="secondary"
+        size="sm"
+        :disabled="threadListLoadingMore"
+        @click="navigation.loadMoreThreads()"
+      >
+        <RefreshCwIcon v-if="threadListLoadingMore" class="size-4 animate-spin" />
+        {{ threadListLoadingMore ? t("app.loadingMoreThreads") : t("app.loadMoreThreads") }}
+      </Button>
+    </div>
+
+    <div
+      v-if="!sortedThreads.length"
+      class="rounded-2xl bg-canvas-soft px-5 py-4 text-[0.9375rem] leading-7 text-ink"
+    >
       {{ loading ? t("app.thinking") : t("app.noProjectThreads") }}
     </div>
   </section>
