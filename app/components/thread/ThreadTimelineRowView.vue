@@ -3,6 +3,7 @@ import IntermediateStepsToggle from "@/components/thread/IntermediateStepsToggle
 import ThreadItemView from "@/components/thread/ThreadItemView.vue";
 import TurnDurationLabel from "@/components/thread/TurnDurationLabel.vue";
 import TurnUsageAmountLabel from "@/components/thread/TurnUsageAmountLabel.vue";
+import ThreadForkAction from "@/components/thread/ThreadForkAction.vue";
 import type { ThreadTimelineRow } from "@/components/thread/timeline-rows";
 import { Button } from "@codex-gateway/ui/button";
 const { t } = useI18n();
@@ -50,7 +51,13 @@ const emit = defineEmits<{
     :response-usage="props.row.responseUsage"
     :agent-actions-available="props.row.agentActionsAvailable"
   />
-  <div v-else class="flex items-center gap-3">
+  <ThreadForkAction
+    v-else-if="props.row.type === 'turnFork' && hostId !== null && threadId !== null"
+    :host-id="hostId"
+    :thread-id="threadId"
+    :turn-id="props.row.turnId"
+  />
+  <div v-else-if="props.row.type === 'turnDuration'" class="flex items-center gap-3">
     <TurnDurationLabel :timing="props.row" />
     <TurnUsageAmountLabel :usage="props.row.responseUsage" />
   </div>

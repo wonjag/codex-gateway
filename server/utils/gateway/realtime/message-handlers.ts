@@ -45,6 +45,7 @@ import {
   unsubscribeProjectFiles,
 } from "./handlers/files";
 import { readProjectDefaults } from "./handlers/project-defaults";
+import { forkThread, readForkStatus } from "./handlers/thread-fork";
 import {
   handleHostMfaCancel,
   handleHostMfaConnect,
@@ -69,6 +70,8 @@ export const realtimeMessageDispatcher = new RealtimeMessageDispatcher({
   "thread.activate": activateThread,
   "thread.settings.read": readThreadSettings,
   "thread.start": startThread,
+  "thread.fork": forkThread,
+  "thread.fork.status": readForkStatus,
   "thread.subscribe": subscribeThread,
   "thread.unsubscribe": unsubscribeThread,
   "thread.timeline.load": loadThreadTimelinePage,

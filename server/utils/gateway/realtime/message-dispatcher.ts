@@ -143,6 +143,12 @@ export class RealtimeMessageDispatcher {
       .with({ type: "thread.start" }, (value) =>
         this.dispatchEntry(peer, value, this.handlers[value.type]),
       )
+      .with({ type: "thread.fork" }, (value) =>
+        this.dispatchEntry(peer, value, this.handlers[value.type]),
+      )
+      .with({ type: "thread.fork.status" }, (value) =>
+        this.dispatchEntry(peer, value, this.handlers[value.type]),
+      )
       .with({ type: "thread.subscribe" }, (value) =>
         this.dispatchEntry(peer, value, this.handlers[value.type]),
       )

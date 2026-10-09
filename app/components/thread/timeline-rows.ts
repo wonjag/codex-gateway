@@ -16,6 +16,7 @@ const estimatedItemHeights: Partial<Record<ThreadTimelineItem["type"], number>> 
 
 export type ThreadTimelineRow =
   | { key: string; type: "loadMore"; turnId: string; loading: boolean }
+  | { key: string; type: "turnFork"; turnId: string }
   | {
       key: string;
       type: "intermediateHeader";
@@ -59,6 +60,7 @@ export function buildThreadTimelineRows(input: {
   threadId: string | null;
   turns: ThreadTimelineTurnState[];
   agentActionsAvailable: boolean;
+  allowFork: boolean;
 }) {
   return input.turns.flatMap(({ turn, sections, intermediateOpen, intermediateLoading }) => {
     const rows: ThreadTimelineRow[] = [];
@@ -99,8 +101,26 @@ export function buildThreadTimelineRows(input: {
         responseUsage: turn.responseUsage,
       });
     }
+    // A fork boundary belongs to the completed Turn, independent of final text, disclosure,
+    // or a later Turn still running. Never attach it to an intermediate assistant message.
+    if (input.allowFork && canForkTimelineTurn(turn)) {
+      rows.push({
+        key: `${input.threadId}:turn-${turn.id}:fork`,
+        type: "turnFork",
+        turnId: turn.id,
+      });
+    }
     return rows;
   });
+}
+
+function canForkTimelineTurn(turn: ThreadTimelineTurn) {
+  return (
+    turn.id !== "" &&
+    !turn.id.startsWith("client-") &&
+    !turn.id.startsWith("system-") &&
+    (turn.status === "completed" || turn.status === "failed" || turn.status === "interrupted")
+  );
 }
 
 function appendTurnItemsInOrder(input: {
@@ -183,7 +203,8 @@ export function reuseUnchangedTimelineRows(
 
 export function estimateThreadTimelineRow(row: ThreadTimelineRow | undefined) {
   if (row === undefined) return 96;
-  if (row.type === "intermediateHeader" || row.type === "loadMore") return 48;
+  if (row.type === "intermediateHeader" || row.type === "loadMore" || row.type === "turnFork")
+    return 48;
   if (row.type === "turnDuration") return 28;
   return estimatedItemHeights[row.item.type] ?? 96;
 }
@@ -229,6 +250,9 @@ function hasTimingValue(timing: DisplayedTurnTiming) {
 
 function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
   if (left.type !== right.type) return false;
+  if (left.type === "turnFork" && right.type === "turnFork") {
+    return left.turnId === right.turnId;
+  }
   if (left.type === "loadMore" && right.type === "loadMore") {
     return left.turnId === right.turnId && left.loading === right.loading;
   }

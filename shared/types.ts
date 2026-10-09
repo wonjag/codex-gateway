@@ -41,6 +41,7 @@ export type {
 export type { AgentProviderId, AgentProviderOption } from "./agent/providers";
 export { agentProviderIdSchema, agentProviderIds, agentProviderOptions } from "./agent/providers";
 export type { AgentProjectDefaults } from "./types/agent-defaults";
+export type { ThreadForkOrigin, ThreadForkOperation } from "./types/thread-fork";
 export type {
   GatewayMcpServerStatus,
   McpAuthStatus,

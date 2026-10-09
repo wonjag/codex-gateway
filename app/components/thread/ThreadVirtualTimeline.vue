@@ -30,6 +30,7 @@ const props = defineProps<{
   loadingOlder: boolean;
   oldestTimelineCursor: string | null;
   scrollToLatestToken?: number;
+  allowFork?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -105,6 +106,7 @@ const rows = computed<ThreadTimelineRow[]>((previous) => {
     threadId: props.threadId,
     turns: timelineTurns,
     agentActionsAvailable,
+    allowFork: props.allowFork === true,
   });
   // A streaming delta invalidates the row list but normally changes only one item. Preserve all
   // other row identities so Vue and Markdown renderers do not repeat work inside the virtual

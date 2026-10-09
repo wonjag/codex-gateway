@@ -19,6 +19,8 @@ import { ThreadGoalService } from "./thread-goals";
 import { ThreadSettingsService } from "./thread-settings";
 import { ThreadCatalogService } from "./thread-catalog";
 import { ThreadHistoryReader } from "./thread-history-reader";
+import { ThreadForkService } from "./thread-fork-service";
+import type { ThreadForkInput } from "../state/thread-forks";
 import { McpRuntimeService } from "./mcp-runtime";
 import { AppServerFileService } from "./app-server-files";
 import { providerAdapterFor } from "../agent/provider-registry";
@@ -33,6 +35,15 @@ class ThreadBroker {
   private readonly catalog = new ThreadCatalogService(this.registry);
   private readonly mcp = new McpRuntimeService(this.registry);
   private readonly files = new AppServerFileService(this.registry);
+  private readonly forks = new ThreadForkService(this.registry);
+
+  forkThread(host: HostRecord, input: ThreadForkInput) {
+    return this.forks.fork(host, input);
+  }
+
+  forkStatus(host: HostRecord, operationId: string) {
+    return this.forks.status(host, operationId);
+  }
 
   async openThread(
     host: HostRecord,
@@ -41,6 +52,7 @@ class ThreadBroker {
     limit = INITIAL_TURN_PAGE_LIMIT,
     controller?: Awaited<ThreadSubscriptionLease["ready"]>,
   ) {
+    await this.forks.recoverTitle(host, threadId);
     return this.openService.openThread(host, threadId, projectId, limit, controller);
   }
 
