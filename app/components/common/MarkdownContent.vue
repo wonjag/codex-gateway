@@ -1,9 +1,20 @@
 <script setup lang="ts">
-import { createMarkdownRenderer } from "@codex-gateway/browser-runtime/markdown";
+import {
+  createMarkdownRenderer,
+  type MarkdownRenderOptions,
+} from "@codex-gateway/browser-runtime/markdown";
+import { buttonVariants } from "@codex-gateway/ui/button";
+import { toast } from "@codex-gateway/ui/sonner";
 import { useEventListener } from "@vueuse/core";
 import { computed, ref } from "vue";
 import { parseRemoteFileLink } from "@/utils/file-preview-links";
-import { escapeHtml, highlightCode, normalizeLanguage } from "@/utils/code-highlight";
+import {
+  escapeAttribute,
+  escapeHtml,
+  highlightCode,
+  normalizeLanguage,
+} from "@/utils/code-highlight";
+import { copyCodeBlockText } from "@/utils/copy-code-block";
 import { useFilePreviewContext } from "@/composables/files/useFilePreviewContext";
 import { useGatewayFileWorkspaceStore } from "@/stores/file-workspace";
 import { useStreamRenderScheduler } from "@/composables/rendering/useStreamRenderScheduler";
@@ -23,6 +34,9 @@ const props = withDefaults(
 );
 
 const markdown = createMarkdownRenderer();
+const { t } = useI18n();
+const copyLabelPlaceholder = "<span data-code-copy-label></span>";
+const copyButtonClass = escapeAttribute(buttonVariants({ variant: "ghost", size: "lg" }));
 
 const root = ref<HTMLElement | null>(null);
 const filePreviewContext = useFilePreviewContext();
@@ -36,24 +50,45 @@ const markdownScheduler = useStreamRenderScheduler({
   streaming: () => props.streaming,
 });
 
-const rendered = computed(() => markdownScheduler.output.value || "");
+// Translate only the generated label: locale changes must not rerun syntax highlighting.
+const rendered = computed(() =>
+  (markdownScheduler.output.value?.html ?? "").replaceAll(copyLabelPlaceholder, () =>
+    escapeHtml(t("app.copyCodeBlock")),
+  ),
+);
+
+function codeBlockSnapshot() {
+  const codeBlocks: string[] = [];
+  const options: MarkdownRenderOptions = {
+    wrapCodeBlock(block, html) {
+      const index = codeBlocks.push(block.content) - 1;
+      return `<div class="markdown-code-block"><div class="markdown-code-toolbar"><button type="button" class="${copyButtonClass}" data-copy-code-block="${index}">${copyLabelPlaceholder}</button></div>${html}</div>`;
+    },
+  };
+  return { codeBlocks, options };
+}
 
 function renderMarkdownImmediately(content: string) {
-  return markdown.render(content);
+  const { codeBlocks, options } = codeBlockSnapshot();
+  return { html: markdown.render(content, options), codeBlocks };
 }
 
 async function renderMarkdownEnhanced(content: string, diffLanguage: string, signal: AbortSignal) {
-  return await markdown.renderEnhanced(
+  const { codeBlocks, options } = codeBlockSnapshot();
+  const html = await markdown.renderEnhanced(
     content,
     async (fence) => {
-      const normalizedLanguage = normalizeLanguage(fence.language);
+      const normalizedLanguage = normalizeLanguage(fence.language.trim().split(/\s+/)[0] ?? "");
       if (normalizedLanguage === "diff") {
         return `<pre class="syntax-highlight language-diff"><code>${await renderDiff(fence.content, diffLanguage, signal)}</code></pre>`;
       }
-      return `<pre class="shiki-block syntax-highlight language-${normalizeLanguage(normalizedLanguage || "text")}"><code>${await highlightCode(fence.content, normalizedLanguage)}</code></pre>`;
+      return `<pre class="shiki-block syntax-highlight language-${escapeAttribute(normalizedLanguage || "text")}"><code>${await highlightCode(fence.content, normalizedLanguage)}</code></pre>`;
     },
     signal,
+    options,
   );
+  // Publish the source map with its HTML; discarded async renders cannot alter visible copies.
+  return { html, codeBlocks };
 }
 
 async function renderDiff(value: string, language: string, signal: AbortSignal) {
@@ -117,6 +152,16 @@ function diffLineClass(line: string) {
 }
 
 function handleClick(event: MouseEvent) {
+  const copyButton = (event.target as Element | null)?.closest?.<HTMLButtonElement>(
+    "button[data-copy-code-block]",
+  );
+  if (copyButton && root.value?.contains(copyButton)) {
+    event.preventDefault();
+    const index = Number(copyButton.dataset.copyCodeBlock);
+    const value = markdownScheduler.output.value?.codeBlocks[index];
+    if (value !== undefined) void copyCode(value);
+    return;
+  }
   const anchor = (event.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
   if (!anchor || !filePreviewContext) {
     return;
@@ -138,6 +183,15 @@ function handleClick(event: MouseEvent) {
     path: target.path,
     line: target.line,
   });
+}
+
+async function copyCode(value: string) {
+  try {
+    await copyCodeBlockText(value);
+    toast.success(t("app.codeBlockCopied"));
+  } catch {
+    toast.error(t("app.copyCodeBlockFailed"));
+  }
 }
 
 useEventListener(root, "click", handleClick);

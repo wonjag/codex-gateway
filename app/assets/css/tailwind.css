@@ -314,6 +314,22 @@
     @apply border border-hairline bg-canvas-soft;
   }
 
+  .markdown-content .markdown-code-block {
+    @apply my-4 min-w-0 max-w-full overflow-hidden rounded-lg border border-hairline bg-canvas-soft;
+  }
+
+  .markdown-content .markdown-code-toolbar {
+    @apply flex justify-end border-b border-hairline px-2 py-1 text-ink-muted;
+  }
+
+  .markdown-content .markdown-code-block > pre {
+    @apply m-0 rounded-none border-0;
+  }
+
+  .diff-markdown .markdown-content .markdown-code-block {
+    @apply m-0;
+  }
+
   /* Shiki's dual-theme output sets these variables on each token. Keep selection in CSS so theme
    * changes do not schedule a second highlighter pass while Agent output is still streaming. */
   .syntax-highlight,
