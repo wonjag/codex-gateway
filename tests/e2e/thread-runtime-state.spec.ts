@@ -138,6 +138,34 @@ test("opening completed history does not show fake thinking", async ({ page }) =
   await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", "已完成");
 });
 
+test("opening an idle app-server thread clears stale in-progress history", async ({ page }) => {
+  await openApp(page);
+  const threadId = "e2e-idle-thread-with-stale-turn";
+  await installRealtimeThreadSnapshotMock(page, {
+    snapshots: {
+      [threadId]: {
+        thread: {
+          id: threadId,
+          name: "Recovered Idle Thread",
+          status: { type: "idle" },
+        },
+        history: {
+          thread: {
+            id: threadId,
+            turns: [{ id: "stale-turn", status: "inProgress", items: [] }],
+          },
+        },
+      },
+    },
+  });
+  await seedGatewayThread(page, { projectId: 1, threadId });
+
+  await openThreadInStore(page, { threadId, hostId: 1, projectId: 1 });
+
+  await expect.poll(() => selectedThreadStatusInStore(page)).toBe("completed");
+  await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", "已完成");
+});
+
 test("opening a cached thread applies terminal events before deriving composer state", async ({
   page,
 }) => {

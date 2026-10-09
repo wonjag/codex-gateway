@@ -113,9 +113,24 @@ export function runtimeStatusFromThreadState(
   history: unknown,
   events: GatewayEvent[] = [],
 ): ThreadRuntimeStatus | null {
+  // `thread/read` and `thread/list` return the app-server's current lifecycle status.  A
+  // reconnect can leave the bounded history cache with an in-progress turn even though the
+  // daemon has already finalized (or interrupted) it.  An explicitly active or failed thread
+  // takes precedence; an idle/completed thread is applied after terminal turn history so that
+  // the latest completed turn can still drive the normal composer state.
+  const threadStatus = explicitThreadRuntimeStatus(thread, history);
+  // An active or failed top-level status represents current daemon state that may not have
+  // materialized in the cached timeline yet.
+  if (threadStatus === "running" || threadStatus === "failed" || threadStatus === "interrupted") {
+    return threadStatus;
+  }
+
   const latestTurnTerminalStatus = terminalStatusFromLatestTurn(thread, history);
   if (latestTurnTerminalStatus) {
     return latestTurnTerminalStatus;
+  }
+  if (threadStatus) {
+    return threadStatus;
   }
   const eventStatus = runtimeStatusFromEvents(events);
   if (eventStatus) {
@@ -134,6 +149,17 @@ function runtimeStatusFromThreadSnapshot(
   thread: unknown,
   history: unknown,
 ): ThreadRuntimeStatus | null {
+  // The top-level app-server status is authoritative after a reconnect.  In particular, an idle
+  // thread may still carry an in-progress turn in the locally cached timeline until the next
+  // compaction/refresh.  Do not infer running from that stale turn.
+  const threadStatus = explicitThreadRuntimeStatus(thread, history);
+  if (threadStatus === "running") {
+    return threadStatus;
+  }
+  if (threadStatus) {
+    return threadStatus;
+  }
+
   const candidates = candidateThreadStates(thread, history);
   const turns = turnsFromThreadState(thread, history);
 
@@ -153,12 +179,6 @@ function runtimeStatusFromThreadSnapshot(
     return "running";
   }
 
-  const threadStatus = runtimeStatusFromTopLevelThreadStatus(
-    nestedThreadState(thread)?.status ?? nestedThreadState(history)?.status,
-  );
-  if (threadStatus) {
-    return threadStatus;
-  }
   if (candidates.some((candidate) => statusValue(candidate.status) === "failed")) {
     return "failed";
   }
@@ -172,6 +192,12 @@ function runtimeStatusFromThreadSnapshot(
     return "running";
   }
   return null;
+}
+
+function explicitThreadRuntimeStatus(thread: unknown, history: unknown) {
+  return runtimeStatusFromTopLevelThreadStatus(
+    nestedThreadState(thread)?.status ?? nestedThreadState(history)?.status,
+  );
 }
 
 function terminalStatusFromLatestTurn(
