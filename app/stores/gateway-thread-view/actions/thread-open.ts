@@ -73,6 +73,7 @@ export function createThreadOpenActions() {
       if (
         navigation.selectedHostId === targetHostId &&
         navigation.selectedThreadId === threadId &&
+        navigation.selectedProjectId === targetProjectId &&
         views.currentThread !== null &&
         views.history !== null
       ) {

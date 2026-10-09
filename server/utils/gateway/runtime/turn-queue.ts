@@ -1,6 +1,11 @@
 import { runtimeLog } from "./runtime-log";
+import { posix } from "node:path";
 import { z } from "zod";
-import type { QueuedTurn } from "~~/shared/types/turn-queue";
+import {
+  queuePauseReasonSchema,
+  type QueuedTurn,
+  type QueuePauseReason,
+} from "~~/shared/types/turn-queue";
 import type { RealtimeClientMessage } from "~~/shared/types";
 import { gatewayDatabase } from "../storage/database";
 import { encryptJson, decryptJson } from "../storage/crypto";
@@ -14,11 +19,13 @@ import { steerTurnFromRealtime } from "../realtime/turn-steer";
 import { CodexRpcError } from "../http/errors";
 import { threadBroker } from "./broker";
 import { threadRuntimeEvents } from "./thread-runtime-events";
+import { ThreadWorkspaceMismatchError } from "./thread-workspace";
 
 const rowSchema = z.object({
   message_id: z.string(),
   encrypted_input: z.string(),
   status: z.enum(["waiting", "sending", "paused"]),
+  pause_reason: queuePauseReasonSchema.nullable(),
   created_at: z.string(),
 });
 type Scope = { hostId: number; threadId: string };
@@ -38,7 +45,9 @@ function db() {
   if (!recovered) {
     // A restart loses runtime event continuity. Keep pending inputs, but require review before resuming.
     database
-      .prepare("UPDATE turn_queue SET status = 'paused' WHERE status IN ('waiting', 'sending')")
+      .prepare(
+        "UPDATE turn_queue SET pause_reason=CASE WHEN status='sending' THEN 'delivery_uncertain' ELSE 'restarted' END, status='paused' WHERE status IN ('waiting', 'sending')",
+      )
       .run();
     recovered = true;
   }
@@ -60,13 +69,30 @@ function snapshot(scope: Scope): Snapshot {
     type: "turn.queue.snapshot",
     requestId: "",
     ...scope,
-    entries: rows(scope).map((row) => ({
-      id: row.message_id,
-      text: turnStartSchema.parse(decryptJson(row.encrypted_input)).text,
-      status: row.status,
-      createdAt: row.created_at,
-    })),
+    entries: rows(scope).map((row) => {
+      const input = turnStartSchema.parse(decryptJson(row.encrypted_input));
+      return {
+        id: row.message_id,
+        text: input.text,
+        status: row.status,
+        pauseReason: row.pause_reason,
+        canRepairWorkspace:
+          row.status === "paused" &&
+          row.pause_reason === "workspace_mismatch" &&
+          !hasWorkspaceRelativeAttachments(input),
+        createdAt: row.created_at,
+      };
+    }),
   };
+}
+function hasWorkspaceRelativeAttachments(input: z.infer<typeof turnStartSchema>) {
+  // Project references are resolved under project.remotePath. Rebinding them could silently
+  // select a different same-named file, so preserve the input and require explicit reattachment.
+  return (
+    input.references.length > 0 ||
+    input.files.some((file) => !posix.isAbsolute(file.path)) ||
+    input.images.some((image) => image.path !== undefined && !posix.isAbsolute(image.path))
+  );
 }
 function publish(scope: Scope) {
   const message = snapshot(scope);
@@ -82,16 +108,16 @@ function publish(scope: Scope) {
 function setStatus(scope: Scope, id: string, status: string) {
   db()
     .prepare(
-      "UPDATE turn_queue SET status=?, encrypted_input=CASE WHEN ?='sent' THEN '' ELSE encrypted_input END WHERE user_id=? AND host_id=? AND thread_id=? AND message_id=?",
+      "UPDATE turn_queue SET status=?, pause_reason=NULL, encrypted_input=CASE WHEN ?='sent' THEN '' ELSE encrypted_input END WHERE user_id=? AND host_id=? AND thread_id=? AND message_id=?",
     )
     .run(status, status, userId(), scope.hostId, scope.threadId, id);
 }
-function pause(scope: Scope) {
+function pause(scope: Scope, reason: QueuePauseReason, failedId?: string) {
   db()
     .prepare(
-      "UPDATE turn_queue SET status='paused' WHERE user_id=? AND host_id=? AND thread_id=? AND status!='sent'",
+      "UPDATE turn_queue SET status='paused', pause_reason=CASE WHEN ? IS NULL OR message_id=? THEN ? ELSE 'queue_blocked' END WHERE user_id=? AND host_id=? AND thread_id=? AND status IN ('waiting', 'sending')",
     )
-    .run(userId(), scope.hostId, scope.threadId);
+    .run(failedId ?? null, failedId ?? null, reason, userId(), scope.hostId, scope.threadId);
   publish(scope);
 }
 export function subscribeTurnQueue(id: number, callback: (snapshot: Snapshot) => void) {
@@ -133,7 +159,7 @@ export async function insertQueuedTurn(request: QueueRequest) {
     // Keep failure continuity while the FIFO worker is suspended for this explicit insertion.
     unsubscribe = threadRuntimeEvents.subscribe(scope.hostId, scope.threadId, (event) => {
       if (event.event.type === "turn.completed" && event.event.turn.status !== "completed")
-        pause(scope);
+        pause(scope, "interrupted");
     });
     workers.get(key)?.();
     await lease.ready;
@@ -157,9 +183,12 @@ export async function insertQueuedTurn(request: QueueRequest) {
     if (result !== null) setStatus(scope, id, "sent");
     return publish(scope);
   } catch (error) {
-    if (attempt.dispatched && !isRejectedSteer(error)) {
+    if (error instanceof ThreadWorkspaceMismatchError && !attempt.dispatched) {
+      if (rows(scope).some((item) => item.message_id === id))
+        pause(scope, "workspace_mismatch", id);
+    } else if (attempt.dispatched && !isRejectedSteer(error)) {
       // A timeout/disconnect can occur after acceptance. Preserve the message for manual review.
-      pause(scope);
+      pause(scope, "delivery_uncertain", id);
     } else if (rows(scope).find((item) => item.message_id === id)?.status === "sending") {
       setStatus(scope, id, "waiting");
     }
@@ -170,7 +199,7 @@ export async function insertQueuedTurn(request: QueueRequest) {
     unsubscribe();
     release();
     // Return to normal FIFO processing, including after an explicit stale-turn rejection.
-    handleTurnQueue({ ...request, action: "list" });
+    await handleTurnQueue({ ...request, action: "list" });
   }
 }
 
@@ -185,7 +214,7 @@ function isRejectedSteer(error: unknown) {
   );
 }
 
-export function handleTurnQueue(request: QueueRequest) {
+export async function handleTurnQueue(request: QueueRequest) {
   const scope = { hostId: request.hostId, threadId: request.threadId };
   const host = requireRecord(hostStore.getWithSecret(scope.hostId), "Host not found");
   const key = `${userId()}:${scope.hostId}:${scope.threadId}`;
@@ -193,6 +222,7 @@ export function handleTurnQueue(request: QueueRequest) {
   if (
     insertion?.dispatched === true &&
     (request.action === "resume" ||
+      request.action === "repairWorkspace" ||
       ((request.action === "edit" || request.action === "cancel") && request.id === insertion.id))
   )
     throw new Error("Wait for the in-flight insertion before changing this message or resuming");
@@ -203,10 +233,19 @@ export function handleTurnQueue(request: QueueRequest) {
     const project = requireRecord(projectStore.get(input.projectId), "Project not found");
     if (project.hostId !== scope.hostId) throw new Error("Project does not belong to host");
     const id = z.string().min(1).parse(input.clientUserMessageId);
+    // Include sent/cancelled tombstones: retries must not resurrect a delivered message or
+    // replace a user's repaired input with the original request's stale workspace.
+    const findExisting = db().prepare(
+      "SELECT 1 FROM turn_queue WHERE user_id=? AND host_id=? AND thread_id=? AND message_id=?",
+    );
+    if (findExisting.get(userId(), scope.hostId, scope.threadId, id)) return publish(scope);
+    const workspace = await threadBroker.readThreadWorkspace(host, scope.threadId);
+    if (findExisting.get(userId(), scope.hostId, scope.threadId, id)) return publish(scope);
+    const mismatch = project.remotePath !== workspace.cwd;
     if (rows(scope).length >= 50) throw new Error("Queue limit reached (50)");
     db()
       .prepare(
-        "INSERT OR IGNORE INTO turn_queue(user_id,host_id,thread_id,message_id,encrypted_input,status,created_at) VALUES(?,?,?,?,?,'waiting',?)",
+        "INSERT OR IGNORE INTO turn_queue(user_id,host_id,thread_id,message_id,encrypted_input,status,pause_reason,created_at) VALUES(?,?,?,?,?,?,?,?)",
       )
       .run(
         userId(),
@@ -214,6 +253,8 @@ export function handleTurnQueue(request: QueueRequest) {
         scope.threadId,
         id,
         encryptJson(input),
+        mismatch ? "paused" : "waiting",
+        mismatch ? "workspace_mismatch" : null,
         new Date().toISOString(),
       );
   } else if (request.action === "cancel" || request.action === "edit") {
@@ -237,10 +278,46 @@ export function handleTurnQueue(request: QueueRequest) {
           row.message_id,
         );
     }
+  } else if (request.action === "repairWorkspace") {
+    const id = z.string().min(1).parse(request.id);
+    const pending = rows(scope);
+    const row = pending.find((item) => item.message_id === id);
+    if (inserting.has(key) || pending.some((item) => item.status === "sending"))
+      throw new Error("Wait for the in-flight message before repairing the workspace");
+    if (row?.status !== "paused" || row.pause_reason !== "workspace_mismatch")
+      throw new Error(
+        "Only a confirmed workspace mismatch can be repaired; review message delivery first",
+      );
+    const input = turnStartSchema.parse(decryptJson(row.encrypted_input));
+    if (hasWorkspaceRelativeAttachments(input))
+      throw new Error(
+        "This message has workspace-relative files. Remove it and reselect files in the correct conversation before sending.",
+      );
+    // Stop any worker still checking a prior input. Its onStarting guard will reject dispatch.
+    workers.get(key)?.();
+    const workspace = await threadBroker.readThreadWorkspace(host, scope.threadId);
+    const changed = db()
+      .prepare(
+        "UPDATE turn_queue SET encrypted_input=?, pause_reason='workspace_repaired' WHERE user_id=? AND host_id=? AND thread_id=? AND message_id=? AND status='paused' AND pause_reason='workspace_mismatch' AND encrypted_input=?",
+      )
+      .run(
+        encryptJson({ ...input, projectId: workspace.projectId }),
+        userId(),
+        scope.hostId,
+        scope.threadId,
+        id,
+        row.encrypted_input,
+      );
+    if (changed.changes !== 1)
+      throw new Error("The queued message changed during repair; review its current state");
+    // Repair never starts a turn. The user must review the preserved input and resume separately.
+    return publish(scope);
   } else if (request.action === "resume") {
+    if (rows(scope).some((row) => row.pause_reason === "workspace_mismatch"))
+      throw new Error("Repair or remove messages with a workspace mismatch before resuming");
     db()
       .prepare(
-        "UPDATE turn_queue SET status='waiting' WHERE user_id=? AND host_id=? AND thread_id=? AND status='paused'",
+        "UPDATE turn_queue SET status='waiting', pause_reason=NULL WHERE user_id=? AND host_id=? AND thread_id=? AND status='paused'",
       )
       .run(userId(), scope.hostId, scope.threadId);
   }
@@ -252,7 +329,7 @@ export function handleTurnQueue(request: QueueRequest) {
     const lease = threadBroker.retainQueuedThread(host, scope.threadId);
     const unsubscribe = threadRuntimeEvents.subscribe(scope.hostId, scope.threadId, (event) => {
       if (event.event.type === "turn.completed" && event.event.turn.status !== "completed") {
-        pause(scope);
+        pause(scope, "interrupted");
         stop();
       }
     });
@@ -267,13 +344,16 @@ export function handleTurnQueue(request: QueueRequest) {
     const run = bindGatewayUser(async () => {
       if (stopped || busy) return;
       busy = true;
+      let candidateId: string | undefined;
       try {
         await lease.ready;
+        if (stopped) return;
         const row = rows(scope)[0];
         if (!row || row.status !== "waiting") {
           stop();
           return;
         }
+        candidateId = row.message_id;
         const input = turnStartSchema.parse(decryptJson(row.encrypted_input));
         const result = await startTurnFromRealtime(
           { ...input, type: "turn.start", requestId: row.message_id },
@@ -299,11 +379,18 @@ export function handleTurnQueue(request: QueueRequest) {
           stop();
           return;
         }
-      } catch {
+      } catch (error) {
         // Retain input on validation/transport failure; never guess whether turn/start was accepted.
-        if (!stopped) {
-          runtimeLog("queued turn submission paused after failure", scope);
-          pause(scope);
+        if (
+          !stopped &&
+          (candidateId === undefined || rows(scope).some((row) => row.message_id === candidateId))
+        ) {
+          const reason =
+            error instanceof ThreadWorkspaceMismatchError
+              ? "workspace_mismatch"
+              : "delivery_uncertain";
+          runtimeLog("queued turn submission paused after failure", { ...scope, reason });
+          pause(scope, reason, candidateId);
           stop();
         }
       } finally {

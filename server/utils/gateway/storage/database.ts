@@ -97,6 +97,7 @@ function migrate(db: DatabaseSync) {
       message_id TEXT NOT NULL,
       encrypted_input TEXT NOT NULL,
       status TEXT NOT NULL CHECK (status IN ('waiting', 'sending', 'paused', 'sent')),
+      pause_reason TEXT,
       created_at TEXT NOT NULL,
       UNIQUE(user_id, host_id, thread_id, message_id)
     );
@@ -185,4 +186,9 @@ function migrate(db: DatabaseSync) {
       ON tmux_monitors(user_id, host_id, session_name, window_index, pane_index)
       WHERE status = 'active';
   `);
+  // Preserve existing queued inputs when adding structured, non-sensitive failure reasons.
+  const queueColumns = db.prepare("PRAGMA table_info(turn_queue)").all();
+  if (!queueColumns.some((column) => column.name === "pause_reason")) {
+    db.exec("ALTER TABLE turn_queue ADD COLUMN pause_reason TEXT");
+  }
 }

@@ -5,6 +5,7 @@ import { Textarea } from "@codex-gateway/ui/textarea";
 import { useGatewayTurnQueueStore } from "@/stores/gateway-turn-queue";
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
 import { gatewayDomainEvents } from "@/stores/gateway/domain-events";
+import type { QueuePauseReason } from "~~/shared/types/turn-queue";
 
 const props = defineProps<{ hostId: number; threadId: string }>();
 const queue = useGatewayTurnQueueStore();
@@ -16,13 +17,27 @@ const activeTurnId = computed(
 const editing = ref<string | null>(null);
 const draft = ref("");
 const pending = ref(false);
+const pauseReasonKeys: Record<QueuePauseReason, string> = {
+  workspace_mismatch: "app.queueWorkspaceMismatch",
+  workspace_repaired: "app.queueWorkspaceRepaired",
+  delivery_uncertain: "app.queueDeliveryUncertain",
+  interrupted: "app.queueInterrupted",
+  restarted: "app.queueRestarted",
+  queue_blocked: "app.queueBlocked",
+};
+const workspaceMismatch = computed(() =>
+  entries.value.some((entry) => entry.pauseReason === "workspace_mismatch"),
+);
 const canInsert = computed(
   () =>
     !pending.value &&
     Boolean(activeTurnId.value) &&
     entries.value.every((entry) => entry.status === "waiting"),
 );
-async function action(kind: "list" | "cancel" | "edit" | "resume" | "insert", id?: string) {
+async function action(
+  kind: "list" | "cancel" | "edit" | "resume" | "insert" | "repairWorkspace",
+  id?: string,
+) {
   if (pending.value && kind !== "list") return;
   const expectedTurnId = activeTurnId.value;
   if (
@@ -71,16 +86,25 @@ onUnmounted(off);
   >
     <p class="font-medium">{{ $t("app.queuedMessages", { count: entries.length }) }}</p>
     <p class="text-muted-foreground">{{ $t("app.queueDeliveryHint") }}</p>
-    <p v-if="entries.some((entry) => entry.status === 'paused')" class="text-muted-foreground">
-      {{ $t("app.queuePausedHint") }}
-    </p>
     <div
       v-for="entry in entries"
       :key="entry.id"
       class="grid min-w-0 gap-1"
       :data-queue-status="entry.status"
+      :data-queue-pause-reason="entry.pauseReason"
     >
       <p class="whitespace-pre-wrap break-words" :title="entry.text">{{ entry.text }}</p>
+      <p v-if="entry.status === 'paused'" class="text-muted-foreground" role="status">
+        {{
+          $t(
+            entry.pauseReason === "workspace_mismatch" && !entry.canRepairWorkspace
+              ? "app.queueWorkspaceFilesNeedReview"
+              : entry.pauseReason
+                ? pauseReasonKeys[entry.pauseReason]
+                : "app.queuePausedHint",
+          )
+        }}
+      </p>
       <template v-if="editing === entry.id">
         <Textarea v-model="draft" :aria-label="$t('app.editQueuedMessage')" />
         <div class="flex gap-2">
@@ -96,6 +120,16 @@ onUnmounted(off);
       <div v-else class="flex flex-wrap gap-2">
         <span v-if="entry.status === 'sending'">{{ $t("app.queueSending") }}</span>
         <template v-else>
+          <Button
+            v-if="entry.canRepairWorkspace"
+            size="sm"
+            variant="outline"
+            class="h-auto min-h-8 max-w-full whitespace-normal"
+            data-testid="repair-queued-workspace"
+            :disabled="pending"
+            @click="action('repairWorkspace', entry.id)"
+            >{{ $t("app.repairQueueWorkspace") }}</Button
+          >
           <Button
             v-if="entry.status === 'waiting'"
             size="sm"
@@ -131,7 +165,7 @@ onUnmounted(off);
       v-if="entries.some((entry) => entry.status === 'paused')"
       size="sm"
       variant="outline"
-      :disabled="pending"
+      :disabled="pending || workspaceMismatch"
       @click="action('resume')"
       >{{ $t("app.resumeQueue") }}</Button
     >

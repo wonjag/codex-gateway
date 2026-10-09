@@ -86,6 +86,10 @@ class ThreadBroker {
     return this.registry.retainSubscription(host, threadId, "scoped");
   }
 
+  readThreadWorkspace(host: HostRecord, threadId: string) {
+    return this.turnCommands.readThreadWorkspace(host, threadId);
+  }
+
   startQueuedTurn(
     host: HostRecord,
     threadId: string,

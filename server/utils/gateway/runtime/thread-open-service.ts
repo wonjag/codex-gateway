@@ -24,6 +24,7 @@ import { gatewayThreadFromAppServer } from "../protocol/gateway-thread";
 import type { ThreadHistoryReader } from "./thread-history-reader";
 import { installRecoveredTurnTail } from "./thread-tail-recovery";
 import { timelinePageToTurns } from "~~/shared/thread-history/app-server-timeline";
+import { resolveThreadProjectId } from "./thread-workspace";
 
 export class ThreadOpenService {
   private readonly pendingRefreshes = new Map<
@@ -91,6 +92,7 @@ export class ThreadOpenService {
   startedThreadResult(host: HostRecord, projectId: number | null, rawResult: unknown) {
     const parsed = parseThreadStartResult(rawResult);
     const thread: AppServerThread = parsed.thread;
+    projectId = resolveThreadProjectId(host.id, projectId, thread.cwd);
     const threadId = String(thread.id);
     threadMetadataStore.record(host.id, projectId, thread);
     const recentEvents = gatewayEventStore.list(host.id, threadId, 0, 200);
@@ -261,7 +263,16 @@ export class ThreadOpenService {
     snapshot: ThreadOpenSnapshot,
   ) {
     const recentEvents = gatewayEventStore.list(host.id, threadId, 0, 200);
-    const resolvedProjectId = snapshot.projectId ?? projectId;
+    const resolvedProjectId = resolveThreadProjectId(
+      host.id,
+      snapshot.projectId ?? projectId,
+      snapshot.thread.cwd,
+    );
+    if (snapshot.projectId !== resolvedProjectId) {
+      snapshot = { ...snapshot, projectId: resolvedProjectId };
+      threadSnapshotStore.set(host.id, threadId, snapshot);
+      threadMetadataStore.record(host.id, resolvedProjectId, snapshot.thread);
+    }
     runtimeLog("thread cache hit", {
       hostId: host.id,
       threadId,
@@ -328,7 +339,7 @@ export class ThreadOpenService {
     activationController?: ThreadController,
   ) {
     const threadId = thread.id;
-    const resolvedProjectId = resolveProjectId(host.id, projectId, thread.cwd);
+    const resolvedProjectId = resolveThreadProjectId(host.id, projectId, thread.cwd);
     threadMetadataStore.record(host.id, resolvedProjectId, thread);
     const previousSnapshot = threadSnapshotStore.get(host.id, threadId);
     // The per-thread store retains at most 500 events. Reapply the complete retained window so a
@@ -382,13 +393,6 @@ function refreshKey(hostId: number, threadId: string) {
     throw new Error("Thread refresh requires an authenticated user scope");
   }
   return `${userId}:${hostId}:${threadId}`;
-}
-
-function resolveProjectId(hostId: number, projectId: number | null, cwd: unknown) {
-  if (projectId !== null || typeof cwd !== "string" || cwd.trim() === "") {
-    return projectId;
-  }
-  return projectStore.ensureForPath(hostId, cwd).id;
 }
 
 function snapshotRecentEvents(hostId: number, threadId: string) {

@@ -159,7 +159,7 @@ export type RealtimeClientMessage =
       requestId: string;
       hostId: number;
       threadId: string;
-      action: "list" | "enqueue" | "edit" | "cancel" | "resume" | "insert";
+      action: "list" | "enqueue" | "edit" | "cancel" | "resume" | "insert" | "repairWorkspace";
       id?: string;
       expectedTurnId?: string;
       text?: string;
