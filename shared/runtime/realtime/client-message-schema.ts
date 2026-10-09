@@ -154,6 +154,23 @@ export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z.d
       .strict(),
     z
       .object({
+        type: z.literal("thread.fork"),
+        ...requestIdField,
+        ...threadScopeFields,
+        lastTurnId: nonEmptyString.max(512),
+        operationId: nonEmptyString.max(128),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("thread.fork.status"),
+        ...requestIdField,
+        hostId: positiveId,
+        operationId: nonEmptyString.max(128),
+      })
+      .strict(),
+    z
+      .object({
         type: z.literal("turn.queue"),
         ...requestIdField,
         ...threadScopeFields,

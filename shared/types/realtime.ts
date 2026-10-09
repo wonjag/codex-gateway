@@ -26,6 +26,7 @@ import type { ProjectFileSearchResult } from "./files";
 import type { GatewayMcpServerStatus } from "./mcp";
 import type { AgentProviderId } from "../agent/providers";
 import type { AgentProjectDefaults } from "./agent-defaults";
+import type { ThreadForkOperation } from "./thread-fork";
 
 export type RealtimeClientMessage =
   | {
@@ -138,6 +139,20 @@ export type RealtimeClientMessage =
       effort?: ReasoningEffort | null;
       summary?: ReasoningSummary | null;
       approvalPolicy?: ApprovalPolicy | null;
+    }
+  | {
+      type: "thread.fork";
+      requestId: string;
+      hostId: number;
+      threadId: string;
+      lastTurnId: string;
+      operationId: string;
+    }
+  | {
+      type: "thread.fork.status";
+      requestId: string;
+      hostId: number;
+      operationId: string;
     }
   | {
       type: "turn.queue";
@@ -442,6 +457,11 @@ export type RealtimeServerMessage =
       lastEventId: number;
       eventEpoch: string;
     } & ThreadOpenResult)
+  | {
+      type: "thread.fork.result";
+      requestId: string;
+      operation: ThreadForkOperation;
+    }
   | {
       type: "thread.timeline.page";
       requestId: string;

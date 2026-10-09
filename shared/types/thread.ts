@@ -3,6 +3,7 @@ import type { ThreadTimelineHistoryState } from "../thread-history/types";
 import type { AgentProviderId } from "../agent/providers";
 import type { AppServerThread } from "../runtime/app-server";
 import type { ReasoningSummary } from "../reasoning-summary";
+import type { ThreadForkOrigin } from "./thread-fork";
 
 export type { ReasoningSummary } from "../reasoning-summary";
 
@@ -127,6 +128,7 @@ export type GatewayThread = Omit<AppServerThread, "projectId"> & {
   projectId: number | null;
   pinned: boolean;
   title: string | null;
+  forkOrigin?: ThreadForkOrigin | null;
 };
 
 export interface ThreadTokenUsageState {

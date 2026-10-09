@@ -92,6 +92,7 @@ export function createRealtimeServerMessageDispatcher(ctx: RealtimeServerMessage
           type: P.union(
             "thread.snapshot",
             "thread.started",
+            "thread.fork.result",
             "thread.timeline.page",
             "thread.attachments.page",
             "thread.attachment.added",

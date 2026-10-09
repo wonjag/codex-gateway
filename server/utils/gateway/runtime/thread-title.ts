@@ -12,6 +12,7 @@ import { threadMetadataStore } from "../state/thread-metadata";
 import { threadRuntimeEvents } from "./thread-runtime-events";
 import { runtimeLog } from "./runtime-log";
 import { pinnedThreadEvents } from "../config/pinned-thread-events";
+import { threadForkStore } from "../state/thread-forks";
 
 const attempted = new LRUCache<string, boolean>({ max: 2000 });
 const revisions = new LRUCache<string, number>({ max: 2000 });
@@ -48,6 +49,8 @@ export async function generateThreadTitle(host: HostRecord, threadId: string) {
 }
 
 export function maybeGenerateThreadTitle(host: HostRecord, threadId: string, text: string) {
+  // Forks retain their explicit branch name, including after restart or a failed remote rename.
+  if (threadForkStore.origin(host.id, threadId) !== null) return;
   const identity = key(host.id, threadId);
   if (attempted.has(identity)) return;
   attempted.set(identity, true);

@@ -8,7 +8,9 @@ import ThreadVirtualTimeline from "@/components/thread/ThreadVirtualTimeline.vue
 import ActiveSubAgentsBar from "@/components/thread/subagent/ActiveSubAgentsBar.vue";
 import MisalignmentRecoveryCard from "@/components/thread/MisalignmentRecoveryCard.vue";
 import McpRuntimeStatusBar from "@/components/thread/McpRuntimeStatusBar.vue";
+import ThreadForkOrigin from "@/components/thread/ThreadForkOrigin.vue";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
+import { isAppServerSubAgentThread } from "~~/shared/runtime/app-server";
 import { useChatWorkspaceState } from "./chat-workspace-state";
 
 const {
@@ -28,6 +30,9 @@ const {
   selectedThreadViewReady,
 } = useChatWorkspaceState();
 const threadTurns = useGatewayThreadTurnsStore();
+const allowFork = computed(
+  () => currentThread.value !== null && !isAppServerSubAgentThread(currentThread.value),
+);
 
 const { t } = useI18n();
 const showThreadLoading = computed(
@@ -41,6 +46,11 @@ const showThreadLoading = computed(
 <template>
   <div class="relative flex min-h-0 flex-1 overflow-hidden">
     <div data-testid="chat-main-pane" class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <ThreadForkOrigin
+        v-if="selectedThreadId && currentThread?.id === selectedThreadId"
+        :host-id="selectedHostId"
+        :thread="currentThread"
+      />
       <ActiveSubAgentsBar
         v-if="selectedThreadId"
         :turns="historyTurns"
@@ -74,6 +84,7 @@ const showThreadLoading = computed(
         :loading-older="loadingOlderTurns"
         :oldest-timeline-cursor="oldestTimelineCursor"
         :scroll-to-latest-token="scrollToLatestToken"
+        :allow-fork="allowFork"
         @load-older="threadTurns.loadOlderTurns"
       />
 

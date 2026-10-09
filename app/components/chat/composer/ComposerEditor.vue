@@ -322,6 +322,14 @@ function dismissMenu() {
   loading.value = false;
   return true;
 }
+
+function focus() {
+  if (props.disabled || !view.value) return false;
+  view.value.focus();
+  return true;
+}
+
+defineExpose({ focus });
 </script>
 
 <template>

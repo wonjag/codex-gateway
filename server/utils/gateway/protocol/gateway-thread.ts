@@ -1,5 +1,6 @@
 import type { AppServerThread, GatewayThread } from "~~/shared/types";
 import { currentGatewayMemoryState } from "../state/memory";
+import { threadForkStore } from "../state/thread-forks";
 
 /**
  * The browser boundary is the only place that enriches an official app-server Thread. Runtime
@@ -25,5 +26,6 @@ export function gatewayThreadFromAppServer(
     projectId,
     pinned: pinned !== undefined,
     title: pinned?.title ?? thread.name,
+    forkOrigin: threadForkStore.origin(hostId, thread.id),
   };
 }

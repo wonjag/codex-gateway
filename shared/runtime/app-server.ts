@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { reasoningSummarySchema } from "../reasoning-summary";
+import { threadForkOriginSchema } from "../types/thread-fork";
 import type {
   ApprovalPolicy,
   ThreadCollaborationMode,
@@ -359,6 +360,7 @@ export const gatewayThreadSchema = appServerThreadSchema.omit({ projectId: true 
   projectId: z.number().int().positive().nullable(),
   pinned: z.boolean(),
   title: z.string().nullable(),
+  forkOrigin: threadForkOriginSchema.nullable().optional(),
 });
 
 export function parseAppServerThread(value: unknown): AppServerThread {

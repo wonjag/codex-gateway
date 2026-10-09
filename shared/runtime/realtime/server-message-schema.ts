@@ -1,4 +1,5 @@
 import { queuedTurnSchema } from "~~/shared/types/turn-queue";
+import { threadForkOperationSchema } from "~~/shared/types/thread-fork";
 import { z } from "zod";
 import type { RealtimeServerMessage } from "../../types";
 import { reasoningSummarySchema } from "../../reasoning-summary";
@@ -570,6 +571,13 @@ export const realtimeServerMessageSchema: z.ZodType<RealtimeServerMessage> = z.d
         ...requestIdField,
         ...threadScopeFields,
         ...threadOpenResultFields,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("thread.fork.result"),
+        ...requestIdField,
+        operation: threadForkOperationSchema,
       })
       .strict(),
     z

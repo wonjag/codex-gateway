@@ -86,6 +86,9 @@ const emit = defineEmits<{
 }>();
 
 const uploadInput = ref<HTMLInputElement | null>(null);
+const composerEditor = ref<InstanceType<typeof ComposerEditor> | null>(null);
+
+defineExpose({ focus: () => composerEditor.value?.focus() ?? false });
 
 function openAttachmentPicker() {
   uploadInput.value?.click();
@@ -141,6 +144,7 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
         />
         <AttachmentChips :files="attachedFiles" @remove="emit('removeAttachment', $event)" />
         <ComposerEditor
+          ref="composerEditor"
           :key="composerScopeKey()"
           :model-value="modelValue"
           :references="fileReferences"

@@ -3,6 +3,7 @@ import type { HostRecord, ThreadSettingsState } from "~~/shared/types";
 import type { ControllerRegistry } from "./controller-registry";
 import { buildAppServerCollaborationMode } from "../protocol/thread-payload";
 import { parseTurnSettingsUpdateResponse } from "~~/shared/runtime/app-server";
+import { threadForkStore } from "../state/thread-forks";
 
 export class ThreadSettingsService {
   constructor(private readonly registry: ControllerRegistry) {}
@@ -70,6 +71,8 @@ export class ThreadSettingsService {
 
   async renameThread(host: HostRecord, threadId: string, name: string) {
     protectManualTitle(host.id, threadId);
+    // User intent wins even if a delayed default-title retry is currently reading metadata.
+    threadForkStore.clearPendingTitle(host.id, threadId);
     return this.registry.withScopedSubscription(host, threadId, (controller) =>
       controller.enqueue(() => controller.client.request("thread/name/set", { threadId, name })),
     );

@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { ref, watch } from "vue";
 import TurnQueuePanel from "@/components/chat/composer/TurnQueuePanel.vue";
 import { Button } from "@codex-gateway/ui/button";
 import ComposerShell from "@/components/chat/composer/ComposerShell.vue";
 import { useComposerController } from "@/composables/composer/useComposerController";
+import { useGatewayThreadForkStore } from "@/stores/gateway-thread-fork";
 
 const {
   activeEffortCompactLabel,
@@ -64,6 +66,29 @@ const {
   uploadingAttachments,
   handleFileReferenceLimit,
 } = useComposerController();
+
+const forks = useGatewayThreadForkStore();
+const composerShell = ref<InstanceType<typeof ComposerShell> | null>(null);
+watch(
+  () =>
+    [
+      forks.focusRequest,
+      composerInputEnabled.value,
+      composerShell.value,
+      selectedHostId.value,
+      selectedThreadId.value,
+    ] as const,
+  ([request, enabled, shell, hostId, threadId]) => {
+    if (request === null) return;
+    if (request.hostId !== hostId || request.threadId !== threadId) {
+      forks.clearFocusRequest(request.token);
+      return;
+    }
+    if (!enabled) return;
+    if (shell?.focus()) forks.clearFocusRequest(request.token);
+  },
+  { flush: "post", immediate: true },
+);
 </script>
 
 <template>
@@ -84,6 +109,7 @@ const {
     >{{ $t("app.steerNow") }}</Button
   >
   <ComposerShell
+    ref="composerShell"
     v-model="turnText"
     v-model:file-references="fileReferences"
     :attached-files="attachedFiles"

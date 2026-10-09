@@ -103,6 +103,34 @@ function migrate(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_turn_queue_scope
       ON turn_queue(user_id, host_id, thread_id, sequence);
 
+    CREATE TABLE IF NOT EXISTS thread_fork_operations (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      host_id INTEGER NOT NULL,
+      operation_id TEXT NOT NULL,
+      source_thread_id TEXT NOT NULL,
+      last_turn_id TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('creating', 'created', 'failed', 'outcome-unknown')),
+      thread_id TEXT,
+      cwd TEXT,
+      pending_title TEXT,
+      expected_name TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, host_id, operation_id)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_thread_fork_origin
+      ON thread_fork_operations(user_id, host_id, thread_id)
+      WHERE thread_id IS NOT NULL;
+
+    -- Native fork has no idempotency key. A process restart cannot prove whether an outstanding
+    -- request created a child, so never silently replay an operation with no recorded identity.
+    UPDATE thread_fork_operations
+      SET status = 'outcome-unknown',
+          error = 'The server restarted before the fork result was recorded. Check the session list before creating another branch.',
+          updated_at = datetime('now')
+      WHERE status = 'creating';
+
     CREATE TABLE IF NOT EXISTS user_configs (
       user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       encrypted_config_json TEXT NOT NULL,
