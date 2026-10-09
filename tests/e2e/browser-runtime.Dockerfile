@@ -13,7 +13,13 @@ ARG CODEX_GATEWAY_TASK_CPUS=2
 # become image layers. Changing the package contents invalidates Docker's layer cache.
 RUN --mount=type=bind,source=playwright-core,target=/opt/playwright-core,ro \
     if [ -n "$E2E_DEBIAN_MIRROR" ]; then \
-      sed -i "s|http://deb.debian.org|${E2E_DEBIAN_MIRROR%/}|g" /etc/apt/sources.list.d/debian.sources; \
+      case "$E2E_DEBIAN_MIRROR" in \
+        *[!a-zA-Z0-9._:/-]*|http://|https://) echo 'Invalid E2E_DEBIAN_MIRROR.' >&2; exit 2 ;; \
+        http://*|https://*) ;; \
+        *) echo 'E2E_DEBIAN_MIRROR must be an HTTP(S) mirror URL.' >&2; exit 2 ;; \
+      esac; \
+      sed -i -E "s|^(URIs:[[:space:]]+)https?://[^[:space:]]+(/debian(-security)?)[[:space:]]*$|\1${E2E_DEBIAN_MIRROR%/}\2|" \
+        /etc/apt/sources.list.d/debian.sources; \
     fi \
     && if [ "$E2E_APT_DIRECT" = 1 ]; then \
       env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy \

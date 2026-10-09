@@ -9,13 +9,18 @@ export interface MarkdownCodeFence {
 
 export type MarkdownCodeFenceRenderer = (fence: MarkdownCodeFence) => Promise<string | undefined>;
 
+export interface MarkdownRenderOptions extends Record<string, unknown> {
+  wrapCodeBlock?: (block: MarkdownCodeFence, html: string) => string;
+}
+
 export interface MarkdownRenderer {
   hasCodeFences(content: string): boolean;
-  render(content: string): string;
+  render(content: string, options?: MarkdownRenderOptions): string;
   renderEnhanced(
     content: string,
     renderFence: MarkdownCodeFenceRenderer,
     signal?: AbortSignal,
+    options?: MarkdownRenderOptions,
   ): Promise<string>;
 }
 
@@ -37,34 +42,40 @@ export function createMarkdownRenderer(): MarkdownRenderer {
     trust: false,
   });
 
-  const defaultFenceRenderer = markdown.renderer.rules.fence;
-  markdown.renderer.rules.fence = (tokens, index, options, environment, self) => {
-    const token = tokens[index];
-    const highlightedHtml = token === undefined ? undefined : highlightedFences.get(token);
-    if (highlightedHtml !== undefined) {
-      return highlightedHtml;
-    }
-    return defaultFenceRenderer === undefined
-      ? self.renderToken(tokens, index, options)
-      : defaultFenceRenderer(tokens, index, options, environment, self);
-  };
+  for (const type of ["fence", "code_block"] as const) {
+    const defaultRenderer = markdown.renderer.rules[type];
+    markdown.renderer.rules[type] = (tokens, index, options, environment, self) => {
+      const token = tokens[index];
+      const highlightedHtml = token === undefined ? undefined : highlightedFences.get(token);
+      const html =
+        highlightedHtml ??
+        (defaultRenderer === undefined
+          ? self.renderToken(tokens, index, options)
+          : defaultRenderer(tokens, index, options, environment, self));
+      const { wrapCodeBlock } = environment as MarkdownRenderOptions;
+      return token === undefined || wrapCodeBlock === undefined
+        ? html
+        : wrapCodeBlock({ content: token.content, language: token.info }, html);
+    };
+  }
 
   function parse(content: string) {
     return markdown.parse(content, {});
   }
 
-  function renderTokens(tokens: ReturnType<typeof parse>) {
-    return markdown.renderer.render(tokens, markdown.options, {});
+  function renderTokens(tokens: ReturnType<typeof parse>, options: MarkdownRenderOptions = {}) {
+    const environment = options as unknown as Parameters<typeof markdown.renderer.render>[2];
+    return markdown.renderer.render(tokens, markdown.options, environment);
   }
 
   return {
     hasCodeFences(content) {
       return parse(content).some((token) => token.type === "fence");
     },
-    render(content) {
-      return renderTokens(parse(content));
+    render(content, options) {
+      return renderTokens(parse(content), options);
     },
-    async renderEnhanced(content, renderFence, signal) {
+    async renderEnhanced(content, renderFence, signal, options) {
       signal?.throwIfAborted();
       const tokens = parse(content);
       for (const token of tokens) {
@@ -81,7 +92,7 @@ export function createMarkdownRenderer(): MarkdownRenderer {
           highlightedFences.set(token, highlightedHtml);
         }
       }
-      return renderTokens(tokens);
+      return renderTokens(tokens, options);
     },
   };
 }
