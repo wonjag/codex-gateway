@@ -161,6 +161,7 @@ watch(
                 controller.threadCompletionAttention(project.hostId, String(thread.id))
               "
               :subtitle="formatRelative(thread.updatedAt)"
+              :workspace-name="project.name"
               :pin-label="thread.pinned ? $t('app.unpinThread') : $t('app.pinThread')"
               :long-press-handlers="controller.longPressHandlers"
               :show-pinned-icon="thread.pinned"

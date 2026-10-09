@@ -48,6 +48,7 @@ function subtitle(thread: RecentThread) {
         :status="thread.status"
         :completion-attention="thread.completionAttention"
         :subtitle="subtitle(thread)"
+        :workspace-name="thread.projectName"
         :pin-label="$t('app.pinThread')"
         :long-press-handlers="longPressHandlers"
         @open="emit('open', thread)"

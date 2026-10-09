@@ -50,6 +50,7 @@ function isSelectedPinnedThread(thread: PinnedThreadRecord) {
         :status="runtimeStatus(thread)"
         :completion-attention="completionAttention(thread)"
         :subtitle="subtitleForPinnedThread(thread) || formatRelative(thread.updatedAt)"
+        :workspace-name="thread.projectName"
         :pin-label="$t('app.unpinThread')"
         :long-press-handlers="longPressHandlers"
         show-pinned-icon

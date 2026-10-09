@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { StarIcon } from "@lucide/vue";
-import { computed } from "vue";
+import { CopyIcon, StarIcon } from "@lucide/vue";
+import { computed, toRef } from "vue";
 import { Button } from "@codex-gateway/ui/button";
 import {
   ContextMenu,
@@ -10,6 +10,7 @@ import {
 } from "@codex-gateway/ui/context-menu";
 import type { ThreadRuntimeStatus } from "@/stores/gateway/types";
 import { titleForThread } from "@/stores/gateway/thread-utils/identity";
+import { useCopySessionPath } from "@/composables/thread/useCopySessionPath";
 import { selectedRowClass } from "../sidebar-utils";
 import SidebarRowLabel from "../SidebarRowLabel.vue";
 import ThreadStatusIndicator from "./ThreadStatusIndicator.vue";
@@ -25,6 +26,7 @@ const props = defineProps<{
   subtitle?: string;
   pinLabel: string;
   showPinnedIcon?: boolean;
+  workspaceName?: string | null;
   longPressHandlers?: LongPressContextMenuHandlers;
 }>();
 
@@ -35,6 +37,11 @@ const emit = defineEmits<{
 }>();
 
 const pressHandlers = computed(() => props.longPressHandlers ?? {});
+const sessionName = computed(() => titleForThread(props.thread));
+const { copySessionPath } = useCopySessionPath({
+  workspaceName: toRef(props, "workspaceName"),
+  sessionName,
+});
 </script>
 
 <template>
@@ -68,6 +75,14 @@ const pressHandlers = computed(() => props.longPressHandlers ?? {});
       </ContextMenuItem>
       <ContextMenuItem @select="emit('rename')">
         {{ $t("app.renameThread") }}
+      </ContextMenuItem>
+      <ContextMenuItem
+        v-if="props.workspaceName"
+        data-testid="copy-session-path-menu-item"
+        @select="copySessionPath"
+      >
+        <CopyIcon class="mr-2 size-4" />
+        {{ $t("app.copySessionPath") }}
       </ContextMenuItem>
     </ContextMenuContent>
   </ContextMenu>
