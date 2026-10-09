@@ -46,6 +46,8 @@
     "projectThreads": "Project threads",
     "projectThreadsHint": "Select a real Codex thread below, or start a new thread in this project.",
     "noProjectThreads": "No threads in this project",
+    "loadMoreThreads": "Load more threads",
+    "loadingMoreThreads": "Loading more…",
     "openThread": "Open thread",
     "agentTab": "Agent",
     "filesTab": "Files",

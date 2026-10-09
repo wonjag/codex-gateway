@@ -18,6 +18,13 @@ export const useGatewayNavigationStore = defineStore("gateway-navigation", () =>
     emptySelection(),
   );
   const threads = ref<GatewayThread[]>([]);
+  // The native thread/list cursor is scoped to the current host/project/search query.
+  // Keep it beside the result so the project home can fetch older sessions without
+  // replacing the rows already rendered.
+  const threadListNextCursor = ref<string | null>(null);
+  const threadListLoadingMore = ref(false);
+  const threadListSearchTerm = ref("");
+  const threadListSeenCursors = ref<string[]>([]);
   const selectedHostId = ref<number | null>(null);
   const selectedProjectId = ref<number | null>(null);
   const selectedThreadId = ref<string | null>(null);
@@ -28,6 +35,10 @@ export const useGatewayNavigationStore = defineStore("gateway-navigation", () =>
     [selectedHostId, selectedProjectId],
     () => {
       threads.value = [];
+      threadListNextCursor.value = null;
+      threadListLoadingMore.value = false;
+      threadListSearchTerm.value = "";
+      threadListSeenCursors.value = [];
       listGeneration.value += 1;
     },
     { flush: "sync" },
@@ -43,6 +54,10 @@ export const useGatewayNavigationStore = defineStore("gateway-navigation", () =>
 
   function resetState() {
     threads.value = [];
+    threadListNextCursor.value = null;
+    threadListLoadingMore.value = false;
+    threadListSearchTerm.value = "";
+    threadListSeenCursors.value = [];
     selectedHostId.value = null;
     selectedProjectId.value = null;
     selectedThreadId.value = null;
@@ -52,6 +67,10 @@ export const useGatewayNavigationStore = defineStore("gateway-navigation", () =>
   return {
     lastOpenThread: skipHydrate(lastOpenThread),
     threads,
+    threadListNextCursor,
+    threadListLoadingMore,
+    threadListSearchTerm,
+    threadListSeenCursors,
     listGeneration,
     selectedHostId,
     selectedProjectId,
