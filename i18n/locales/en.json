@@ -241,6 +241,7 @@
     "loadingOlder": "Loading earlier messages",
     "thinking": "Thinking",
     "turnDuration": "Turn duration {duration}",
+    "turnCompletedAt": "End time (Beijing): {time}",
     "turnUsageAmount": "Usage {amount}",
     "history": "History",
     "liveEvents": "Live events",

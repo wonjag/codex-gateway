@@ -2,6 +2,7 @@
 import IntermediateStepsToggle from "@/components/thread/IntermediateStepsToggle.vue";
 import ThreadItemView from "@/components/thread/ThreadItemView.vue";
 import TurnDurationLabel from "@/components/thread/TurnDurationLabel.vue";
+import TurnCompletionTimeLabel from "@/components/thread/TurnCompletionTimeLabel.vue";
 import TurnUsageAmountLabel from "@/components/thread/TurnUsageAmountLabel.vue";
 import ThreadForkAction from "@/components/thread/ThreadForkAction.vue";
 import type { ThreadTimelineRow } from "@/components/thread/timeline-rows";
@@ -57,6 +58,12 @@ const emit = defineEmits<{
     :thread-id="threadId"
     :turn-id="props.row.turnId"
   />
+  <div v-else-if="props.row.type === 'turnCompletedAt'" class="flex items-center gap-3">
+    <TurnCompletionTimeLabel
+      :completed-at="props.row.completedAt"
+      :data-test-id="`turn-completed-at-${props.row.turnId}`"
+    />
+  </div>
   <div v-else-if="props.row.type === 'turnDuration'" class="flex items-center gap-3">
     <TurnDurationLabel :timing="props.row" />
     <TurnUsageAmountLabel :usage="props.row.responseUsage" />

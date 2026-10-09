@@ -17,6 +17,7 @@ const estimatedItemHeights: Partial<Record<ThreadTimelineItem["type"], number>> 
 export type ThreadTimelineRow =
   | { key: string; type: "loadMore"; turnId: string; loading: boolean }
   | { key: string; type: "turnFork"; turnId: string }
+  | { key: string; type: "turnCompletedAt"; turnId: string; completedAt: number }
   | {
       key: string;
       type: "intermediateHeader";
@@ -101,6 +102,16 @@ export function buildThreadTimelineRows(input: {
         responseUsage: turn.responseUsage,
       });
     }
+    // Completion belongs to this turn, even while its steps are expanded or a later turn runs.
+    const completedAt = completedTurnTimestamp(turn);
+    if (completedAt !== null) {
+      rows.push({
+        key: `${input.threadId}:turn-${turn.id}:completed-at`,
+        type: "turnCompletedAt",
+        turnId: turn.id,
+        completedAt,
+      });
+    }
     // A fork boundary belongs to the completed Turn, independent of final text, disclosure,
     // or a later Turn still running. Never attach it to an intermediate assistant message.
     if (input.allowFork && canForkTimelineTurn(turn)) {
@@ -112,6 +123,14 @@ export function buildThreadTimelineRows(input: {
     }
     return rows;
   });
+}
+
+function completedTurnTimestamp(turn: ThreadTimelineTurn) {
+  if (turn.status !== "completed" && turn.status !== "failed" && turn.status !== "interrupted")
+    return null;
+  return typeof turn.completedAt === "number" && Number.isFinite(turn.completedAt)
+    ? turn.completedAt
+    : null;
 }
 
 function canForkTimelineTurn(turn: ThreadTimelineTurn) {
@@ -205,7 +224,7 @@ export function estimateThreadTimelineRow(row: ThreadTimelineRow | undefined) {
   if (row === undefined) return 96;
   if (row.type === "intermediateHeader" || row.type === "loadMore" || row.type === "turnFork")
     return 48;
-  if (row.type === "turnDuration") return 28;
+  if (row.type === "turnDuration" || row.type === "turnCompletedAt") return 28;
   return estimatedItemHeights[row.item.type] ?? 96;
 }
 
@@ -252,6 +271,9 @@ function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
   if (left.type !== right.type) return false;
   if (left.type === "turnFork" && right.type === "turnFork") {
     return left.turnId === right.turnId;
+  }
+  if (left.type === "turnCompletedAt" && right.type === "turnCompletedAt") {
+    return left.turnId === right.turnId && left.completedAt === right.completedAt;
   }
   if (left.type === "loadMore" && right.type === "loadMore") {
     return left.turnId === right.turnId && left.loading === right.loading;
