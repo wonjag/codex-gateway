@@ -240,6 +240,7 @@
     "backToLatest": "Return to latest output",
     "loadingOlder": "Loading earlier messages",
     "thinking": "Thinking",
+    "reasoningRecord": "Reasoning",
     "turnDuration": "Turn duration {duration}",
     "turnCompletedAt": "End time (Beijing): {time}",
     "turnUsageAmount": "Usage {amount}",

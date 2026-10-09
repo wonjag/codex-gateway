@@ -8,6 +8,7 @@ const props = defineProps<{
   item: ThreadTimelineItem;
   hostId: number | null;
   threadId: string | null;
+  turnTerminal: boolean;
   turnTiming?: DisplayedTurnTiming | null;
   responseUsage?: ThreadResponseUsage[];
   agentActionsAvailable?: boolean;
@@ -22,6 +23,7 @@ const itemComponent = computed(() => componentForThreadItem(props.item.type));
     :item="item"
     :host-id="hostId"
     :thread-id="threadId"
+    :turn-terminal="item.type === 'reasoning' ? turnTerminal : undefined"
     :turn-timing="item.type === 'agentMessage' ? turnTiming : undefined"
     :response-usage="item.type === 'agentMessage' ? responseUsage : undefined"
     :agent-actions-available="item.type === 'agentMessage' && agentActionsAvailable"

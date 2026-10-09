@@ -11,16 +11,22 @@ import { isItemInProgress, threadItemText } from "@/utils/thread-items";
 import { formatDurationMs, itemCompletedAtMs, itemStartedAtMs } from "@/utils/item-timing";
 import { usePausableTimestamp } from "@/composables/usePausableTimestamp";
 
-const props = defineProps<{ item: ThreadHistoryItem }>();
+const props = defineProps<{ item: ThreadHistoryItem; turnTerminal?: boolean }>();
 const { t } = useI18n();
 const { timestamp: now, pause, resume } = usePausableTimestamp(100);
 const text = computed(() => threadItemText(props.item));
-const inProgress = computed(() => isItemInProgress(props.item));
 const startedAt = computed(() => itemStartedAtMs(props.item));
 const completedAt = computed(() => itemCompletedAtMs(props.item));
+// A terminal Turn is authoritative even if its last reasoning item missed completion.
+// Keep this presentation guard local: compaction and sleep may legitimately outlive a Turn.
+const inProgress = computed(
+  () => !props.turnTerminal && completedAt.value === null && isItemInProgress(props.item),
+);
 const elapsedMs = computed(() => {
   if (startedAt.value === null) return null;
-  return (inProgress.value ? now.value : (completedAt.value ?? now.value)) - startedAt.value;
+  const end = inProgress.value ? now.value : completedAt.value;
+  // Missing item timing must not turn page-open time or Turn duration into reasoning duration.
+  return end === null ? null : end - startedAt.value;
 });
 const timeLabel = computed(() =>
   elapsedMs.value === null ? null : formatDurationMs(elapsedMs.value),
@@ -33,6 +39,9 @@ watch(inProgress, (active) => (active ? resume() : pause()), { immediate: true }
   <Collapsible
     :default-open="true"
     v-slot="{ open }"
+    data-testid="reasoning-item"
+    :data-item-id="item.id"
+    :data-reasoning-state="inProgress ? 'running' : 'idle'"
     class="max-w-4xl text-[0.9375rem] leading-7 text-ink-muted"
   >
     <CollapsibleTrigger
@@ -40,13 +49,15 @@ watch(inProgress, (active) => (active ? resume() : pause()), { immediate: true }
     >
       <Loader
         v-if="inProgress"
+        data-testid="reasoning-spinner"
         class="size-4 shrink-0 text-primary"
         :aria-label="t('app.running')"
       />
       <BrainIcon v-else class="size-4 shrink-0" />
-      <span class="flex-1">{{ t("app.thinking") }}</span>
+      <span class="flex-1">{{ t(inProgress ? "app.thinking" : "app.reasoningRecord") }}</span>
       <span
         v-if="timeLabel !== null"
+        data-testid="reasoning-duration"
         class="rounded-full bg-surface/80 px-2 py-0.5 font-mono text-[0.6875rem] text-ink-secondary"
         >{{ timeLabel }}</span
       >

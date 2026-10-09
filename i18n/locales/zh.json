@@ -240,6 +240,7 @@
     "backToLatest": "返回最新输出",
     "loadingOlder": "正在加载更早消息",
     "thinking": "思考中",
+    "reasoningRecord": "思考记录",
     "turnDuration": "本轮用时 {duration}",
     "turnCompletedAt": "结束时间（北京时间）：{time}",
     "turnUsageAmount": "用量 {amount}",
