@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { FolderIcon, Loader2Icon } from "@lucide/vue";
+import { CopyIcon, FolderIcon, Loader2Icon } from "@lucide/vue";
 import { computed } from "vue";
+import { storeToRefs } from "pinia";
+import { Button } from "@codex-gateway/ui/button";
 import ChatComposer from "@/components/chat/ChatComposer.vue";
 import ChatPanelScrollArea from "@/components/chat/ChatPanelScrollArea.vue";
 import ProjectThreadList from "@/components/chat/ProjectThreadList.vue";
@@ -10,6 +12,10 @@ import MisalignmentRecoveryCard from "@/components/thread/MisalignmentRecoveryCa
 import McpRuntimeStatusBar from "@/components/thread/McpRuntimeStatusBar.vue";
 import ThreadForkOrigin from "@/components/thread/ThreadForkOrigin.vue";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
+import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
+import { projectById } from "@/stores/gateway-catalog/selectors";
+import { titleForThread } from "@/stores/gateway/thread-utils/identity";
+import { useCopySessionPath } from "@/composables/thread/useCopySessionPath";
 import { isAppServerSubAgentThread } from "~~/shared/runtime/app-server";
 import { useChatWorkspaceState } from "./chat-workspace-state";
 
@@ -30,6 +36,8 @@ const {
   selectedThreadViewReady,
 } = useChatWorkspaceState();
 const threadTurns = useGatewayThreadTurnsStore();
+const catalog = useGatewayCatalogStore();
+const { projects } = storeToRefs(catalog);
 const allowFork = computed(
   () => currentThread.value !== null && !isAppServerSubAgentThread(currentThread.value),
 );
@@ -41,11 +49,63 @@ const showThreadLoading = computed(
     openingThread.value ||
     (Boolean(selectedThreadId.value) && !selectedThreadViewReady.value && !visibleError.value),
 );
+const selectedProject = computed(() => projectById(projects.value, selectedProjectId.value));
+const sessionHeader = computed(() => {
+  const thread = currentThread.value;
+  const threadId = selectedThreadId.value;
+  const project = selectedProject.value;
+  if (
+    !thread ||
+    threadId === null ||
+    String(thread.id) !== String(threadId) ||
+    project === null ||
+    project === undefined
+  ) {
+    return null;
+  }
+  return { workspaceName: project.name, sessionName: titleForThread(thread) };
+});
+const { copySessionPath } = useCopySessionPath({
+  workspaceName: computed(() => sessionHeader.value?.workspaceName),
+  sessionName: computed(() => sessionHeader.value?.sessionName),
+});
 </script>
 
 <template>
   <div class="relative flex min-h-0 flex-1 overflow-hidden">
     <div data-testid="chat-main-pane" class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div
+        v-if="sessionHeader"
+        data-testid="session-header"
+        class="flex shrink-0 items-center justify-between gap-3 border-b border-hairline px-4 py-3 md:px-6"
+      >
+        <div class="min-w-0">
+          <div
+            data-testid="session-header-name"
+            class="truncate text-sm font-semibold text-ink"
+            :title="sessionHeader.sessionName"
+          >
+            {{ sessionHeader.sessionName }}
+          </div>
+          <div
+            data-testid="session-header-workspace"
+            class="truncate text-xs text-ink-muted"
+            :title="sessionHeader.workspaceName"
+          >
+            {{ sessionHeader.workspaceName }}
+          </div>
+        </div>
+        <Button
+          data-testid="copy-session-path"
+          variant="ghost"
+          size="sm"
+          class="shrink-0"
+          @click="copySessionPath"
+        >
+          <CopyIcon class="size-4" />
+          {{ t("app.copySessionPath") }}
+        </Button>
+      </div>
       <ThreadForkOrigin
         v-if="selectedThreadId && currentThread?.id === selectedThreadId"
         :host-id="selectedHostId"
