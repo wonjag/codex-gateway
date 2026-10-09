@@ -48,6 +48,7 @@ const emit = defineEmits<{
     :item="props.row.item"
     :host-id="hostId"
     :thread-id="threadId"
+    :turn-terminal="props.row.turnTerminal"
     :turn-timing="props.row.turnTiming"
     :response-usage="props.row.responseUsage"
     :agent-actions-available="props.row.agentActionsAvailable"

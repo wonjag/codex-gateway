@@ -1,5 +1,6 @@
 import type { ThreadResponseUsage, ThreadTimelineItem, ThreadTimelineTurn } from "~~/shared/types";
 import type { DisplayedTurnTiming } from "@/utils/turn-timing";
+import { statusValue } from "@/utils/thread-items";
 import { itemKey, type ThreadTurnSections } from "./thread-turn-sections";
 
 export type { ThreadTimelineTurn } from "~~/shared/types";
@@ -32,6 +33,7 @@ export type ThreadTimelineRow =
       turnId: string;
       section: ThreadTimelineItemSection;
       item: ThreadTimelineItem;
+      turnTerminal: boolean;
       turnTiming: DisplayedTurnTiming | null;
       responseUsage: ThreadResponseUsage[] | undefined;
       agentActionsAvailable: boolean;
@@ -154,6 +156,8 @@ function appendTurnItemsInOrder(input: {
   agentActionsAvailable: boolean;
 }) {
   const { rows, threadId, turn, sections } = input;
+  const status = statusValue(turn.status);
+  const turnTerminal = status === "completed" || status === "failed" || status === "interrupted";
   const intermediateItems = new Set(sections.intermediateItems);
   const finalItems = new Set(sections.finalItems);
   let intermediateHeaderAdded = false;
@@ -183,6 +187,7 @@ function appendTurnItemsInOrder(input: {
       rows,
       threadId,
       turn.id,
+      turnTerminal,
       section,
       [item],
       sections,
@@ -232,6 +237,7 @@ function appendItemRows(
   rows: ThreadTimelineRow[],
   threadId: string | null,
   turnId: string,
+  turnTerminal: boolean,
   section: ThreadTimelineItemSection,
   items: ThreadTimelineItem[],
   sections: ThreadTurnSections,
@@ -247,6 +253,7 @@ function appendItemRows(
       turnId,
       section,
       item,
+      turnTerminal,
       turnTiming: item === timingTarget ? timing : null,
       responseUsage: item === timingTarget ? responseUsage : undefined,
       agentActionsAvailable: item === timingTarget && agentActionsAvailable,
@@ -294,6 +301,7 @@ function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
     return (
       left.item === right.item &&
       left.turnId === right.turnId &&
+      left.turnTerminal === right.turnTerminal &&
       left.section === right.section &&
       left.agentActionsAvailable === right.agentActionsAvailable &&
       sameResponseUsage(left.responseUsage, right.responseUsage) &&
