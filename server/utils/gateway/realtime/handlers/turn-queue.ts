@@ -10,7 +10,7 @@ export async function turnQueue(
   request: Extract<RealtimeClientMessage, { type: "turn.queue" }>,
 ) {
   const result =
-    request.action === "insert" ? await insertQueuedTurn(request) : handleTurnQueue(request);
+    request.action === "insert" ? await insertQueuedTurn(request) : await handleTurnQueue(request);
   sendRealtimePeerMessage(peer, { ...result, requestId: request.requestId });
 }
 export async function threadTitle(

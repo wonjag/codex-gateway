@@ -30,6 +30,6 @@ export async function steerTurnFromRealtime(
       images: input.images,
       additionalContext: fileReferencesAdditionalContext(references),
     },
-    onDispatch === undefined ? undefined : { cwd: project.remotePath, onDispatch },
+    { cwd: project.remotePath, onDispatch: onDispatch ?? (() => true) },
   );
 }
