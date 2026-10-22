@@ -2,6 +2,7 @@ import type { AppServerThread, HostRecord } from "~~/shared/types";
 import type { ControllerRegistry } from "./controller-registry";
 import { z } from "zod";
 import { appServerThreadSchema } from "~~/shared/runtime/app-server";
+import { listCodexModelGroups } from "../agent/providers/codex/codex-model-catalog";
 
 const threadListPageSchema = z
   .object({
@@ -27,6 +28,6 @@ export class ThreadCatalogService {
 
   async listModels(host: HostRecord, params: Record<string, unknown>) {
     const client = await this.registry.getHostClient(host);
-    return client.request("model/list", params);
+    return listCodexModelGroups(client, host.id, params);
   }
 }

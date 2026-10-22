@@ -4,6 +4,7 @@ import type { ControllerRegistry } from "./controller-registry";
 import { buildAppServerCollaborationMode } from "../protocol/thread-payload";
 import { parseTurnSettingsUpdateResponse } from "~~/shared/runtime/app-server";
 import { threadForkStore } from "../state/thread-forks";
+import { readThreadModelState, validateThreadModelSelection } from "./thread-model-routing";
 
 export class ThreadSettingsService {
   constructor(private readonly registry: ControllerRegistry) {}
@@ -43,7 +44,25 @@ export class ThreadSettingsService {
       params.collaborationMode = buildAppServerCollaborationMode(input.collaborationMode);
     }
     return this.registry.withScopedSubscription(host, threadId, (controller) =>
-      controller.enqueue(() => controller.client.request("thread/settings/update", params)),
+      controller.enqueue(async () => {
+        const thread = await readThreadModelState(controller.client, host.id, threadId);
+        await validateThreadModelSelection(controller.client, host.id, thread, input);
+        return controller.client.request("thread/settings/update", params);
+      }),
+    );
+  }
+
+  async validateThreadModelSelection(
+    host: HostRecord,
+    threadId: string,
+    input: ThreadSettingsState,
+  ) {
+    return this.registry.withScopedSubscription(host, threadId, (controller) =>
+      controller.enqueue(async () => {
+        const thread = await readThreadModelState(controller.client, host.id, threadId);
+        await validateThreadModelSelection(controller.client, host.id, thread, input);
+        return thread.modelProvider;
+      }),
     );
   }
 
@@ -51,21 +70,23 @@ export class ThreadSettingsService {
     host: HostRecord,
     threadId: string,
     turnId: string,
-    input: Pick<ThreadSettingsState, "model" | "effort" | "summary">,
+    input: Pick<ThreadSettingsState, "model" | "modelProvider" | "effort" | "summary">,
   ) {
     const params: Record<string, unknown> = { threadId, turnId };
     if ("model" in input) params.model = input.model;
     if ("effort" in input) params.effort = input.effort;
     if ("summary" in input) params.summary = input.summary;
     return this.registry.withScopedSubscription(host, threadId, (controller) =>
-      controller.enqueue(() =>
-        controller.client.request(
+      controller.enqueue(async () => {
+        const thread = await readThreadModelState(controller.client, host.id, threadId);
+        await validateThreadModelSelection(controller.client, host.id, thread, input);
+        return controller.client.request(
           "turn/settings/update",
           params,
           120_000,
           parseTurnSettingsUpdateResponse,
-        ),
-      ),
+        );
+      }),
     );
   }
 

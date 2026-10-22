@@ -72,6 +72,7 @@ const appServerCollaborationModeSchema = z
 const appServerThreadSettingsSchema = z
   .object({
     model: z.string().min(1),
+    modelProvider: z.string().min(1).optional(),
     effort: z.string().nullable().optional(),
     summary: reasoningSummarySchema.nullable(),
     approvalPolicy: z.unknown(),
@@ -99,6 +100,9 @@ export function threadSettingsFromAppServer(value: unknown): ThreadSettingsState
   if (!parsed.success) return null;
   return {
     model: parsed.data.model,
+    ...(parsed.data.modelProvider === undefined
+      ? {}
+      : { modelProvider: parsed.data.modelProvider }),
     effort: parsed.data.effort ?? null,
     summary: parsed.data.summary,
     approvalPolicy: approvalPolicyFromAppServer(parsed.data.approvalPolicy),
@@ -508,7 +512,10 @@ export function threadGoalFromUnknown(value: unknown): ThreadGoal | null {
 }
 
 export function parseThreadStartResult(value: unknown) {
-  const result = z.object({ thread: appServerThreadSchema }).loose().parse(value);
+  const result = z
+    .object({ thread: appServerThreadSchema, modelProvider: z.string().min(1) })
+    .loose()
+    .parse(value);
   return { raw: result, thread: result.thread };
 }
 
@@ -521,6 +528,7 @@ const threadResumeResultSchema = z
   .object({
     thread: appServerThreadSchema,
     model: z.string().min(1),
+    modelProvider: z.string().min(1),
     reasoningEffort: z.string().nullable(),
     approvalPolicy: z.union([
       z.literal("untrusted"),

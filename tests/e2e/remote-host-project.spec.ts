@@ -52,7 +52,14 @@ test("new threads display and inherit the remote Codex defaults", async ({
   await expect(picker).not.toContainText(/主机默认|Codex 默认/);
   await expect(picker).toContainText(effortDisplayLabel(configured.effort));
   await picker.click();
-  const configuredModelOption = page.getByTestId(`model-option-${configured.model}`);
+  const selectedModelProvider = await picker.getAttribute("data-model-provider");
+  const modelProvider =
+    selectedModelProvider === null || selectedModelProvider === ""
+      ? "default"
+      : selectedModelProvider;
+  const configuredModelOption = page
+    .getByTestId(`model-provider-group-${modelProvider}`)
+    .getByTestId(`model-option-${configured.model}`);
   await expect(configuredModelOption).toBeVisible();
   const configuredModelLabel = (await configuredModelOption.innerText()).trim();
   await expect(page.getByTestId("model-option-host-default")).toContainText(configuredModelLabel);

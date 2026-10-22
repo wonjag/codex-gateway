@@ -26,6 +26,7 @@ export async function startTurnFromRealtime(
     cwd: project.remotePath,
     clientUserMessageId: input.clientUserMessageId,
     model: input.model,
+    modelProvider: input.modelProvider,
     effort: input.effort,
     summary: input.summary,
     approvalPolicy: input.approvalPolicy,

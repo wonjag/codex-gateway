@@ -70,6 +70,9 @@ export function useComposerController() {
       // Only an explicit per-thread/new-thread selection may override app-server persistence.
       // Existing-thread settings are projected from thread/resume instead of inferred here.
       model: settings.selectedModel.value === "" ? undefined : settings.selectedModel.value,
+      // Keep the native source when /new is invoked from an existing thread. Turn requests carry
+      // the same value only as an assertion; the app-server session still owns its provider.
+      modelProvider: settings.selectedModelProvider.value ?? undefined,
       effort,
       approvalPolicy:
         settings.selectedApprovalMode.value === "custom"

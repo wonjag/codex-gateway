@@ -18,6 +18,9 @@ It is not a reimplementation of Codex, and it does not run an agent runtime in t
 
 The goal is simple: open Codex sessions from many servers in a browser while keeping Codex app-server as the source of truth. If Codex Desktop, another client, and Codex Gateway connect to the same app-server thread, they should observe the same state stream.
 
+The model picker supports [collapsible provider groups](docs/model-provider-groups.md), including
+the same model name on a ChatGPT-authenticated source and a custom provider.
+
 <p align="center">
   <img src="docs/images/codex-gateway-workspace.png" alt="Codex Gateway showing remote hosts, projects, a Codex agent loop, and workspace tabs" width="100%">
 </p>

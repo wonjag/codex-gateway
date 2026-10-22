@@ -29,6 +29,7 @@ export interface TurnStartInput {
   cwd?: string | null;
   clientUserMessageId?: string | null;
   model?: string | null;
+  modelProvider?: string | null;
   effort?: ReasoningEffort | null;
   summary?: ReasoningSummary | null;
   approvalPolicy?: ApprovalPolicy | null;

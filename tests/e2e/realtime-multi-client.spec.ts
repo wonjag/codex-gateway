@@ -55,7 +55,17 @@ test("refreshes thread settings after a disconnected browser reconnects", async 
     });
 
     await page.getByTestId("model-select").click();
-    await page.getByTestId(`model-option-${changedModel}`).click();
+    const selectedModelProvider = await page
+      .getByTestId("model-select")
+      .getAttribute("data-model-provider");
+    const modelProvider =
+      selectedModelProvider === null || selectedModelProvider === ""
+        ? "default"
+        : selectedModelProvider;
+    await page
+      .getByTestId(`model-provider-group-${modelProvider}`)
+      .getByTestId(`model-option-${changedModel}`)
+      .click();
     await page.getByTestId("model-selector-close").click();
     await expect(page.getByTestId("model-select")).toContainText(changedModel, {
       ignoreCase: true,

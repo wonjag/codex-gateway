@@ -1,6 +1,9 @@
 export interface ModelRecord {
   id: string;
   model: string;
+  /** Native Codex model provider; together with model this identifies a picker route. */
+  modelProvider?: string | null;
+  providerDisplayName?: string;
   displayName: string;
   description?: string | null;
   hidden?: boolean;
@@ -25,4 +28,5 @@ export interface ModelRecord {
 export interface ModelListResult {
   data: ModelRecord[];
   nextCursor?: string | null;
+  defaultModelProvider?: string | null;
 }

@@ -11,6 +11,8 @@ const {
   activeEffortValue,
   activeModel,
   activeModelLabel,
+  activeModelProvider,
+  activeModelProviderLabel,
   hostDefaultModelLabel,
   hostDefaultEffortLabel,
   activePlanSummary,
@@ -35,7 +37,6 @@ const {
   isThreadRunning,
   labelEffortOption,
   loadingModels,
-  modelOptionValue,
   models,
   planModeActive,
   removeAttachment,
@@ -136,13 +137,14 @@ watch(
     :loading-models="loadingModels"
     :active-model="activeModel"
     :active-model-label="activeModelLabel"
+    :active-model-provider="activeModelProvider"
+    :active-model-provider-label="activeModelProviderLabel"
     :host-default-model-label="hostDefaultModelLabel"
     :host-default-effort-label="hostDefaultEffortLabel"
     :active-effort-value="activeEffortValue"
     :active-effort-compact-label="activeEffortCompactLabel"
     :effort-options="effortOptions"
     :label-effort-option="labelEffortOption"
-    :model-option-value="modelOptionValue"
     :has-composer-input="hasComposerInput"
     :is-thread-running="isThreadRunning"
     :can-interrupt-turn="canInterruptTurn"

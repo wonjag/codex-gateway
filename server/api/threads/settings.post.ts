@@ -10,6 +10,7 @@ export default defineGatewayEventHandler(async (event) => {
   const host = requireRecord(hostStore.getWithSecret(input.hostId), "Host not found");
   return threadBroker.updateThreadSettings(host, input.threadId, {
     model: input.model,
+    modelProvider: input.modelProvider,
     effort: input.effort,
     summary: input.summary,
     approvalPolicy: input.approvalPolicy,

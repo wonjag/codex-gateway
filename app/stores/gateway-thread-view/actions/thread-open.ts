@@ -86,6 +86,7 @@ export function createThreadOpenActions() {
       const viewEpoch = beginViewTransition();
       if (gateway.modelsHostId !== targetHostId) {
         gateway.models = [];
+        gateway.defaultModelProvider = null;
         gateway.modelsHostId = null;
       }
       activatePendingThreadView(targetHostId, targetProjectId, threadId);

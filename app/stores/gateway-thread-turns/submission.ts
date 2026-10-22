@@ -104,6 +104,7 @@ export async function sendTurn(
     if (!shouldSteerActiveTurn) {
       composer.updateSelectedThreadSettings({
         ...(options.model !== undefined ? { model: options.model } : {}),
+        ...(options.modelProvider !== undefined ? { modelProvider: options.modelProvider } : {}),
         ...(options.effort !== undefined ? { effort: options.effort } : {}),
         ...(options.summary !== undefined ? { summary: options.summary } : {}),
         ...(options.approvalPolicy !== undefined ? { approvalPolicy: options.approvalPolicy } : {}),

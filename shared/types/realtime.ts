@@ -136,6 +136,7 @@ export type RealtimeClientMessage =
       cwd?: string | null;
       provider?: AgentProviderId;
       model?: string | null;
+      modelProvider?: string | null;
       effort?: ReasoningEffort | null;
       summary?: ReasoningSummary | null;
       approvalPolicy?: ApprovalPolicy | null;
@@ -181,6 +182,7 @@ export type RealtimeClientMessage =
       clientUserMessageId?: string | null;
       cwd?: string | null;
       model?: string | null;
+      modelProvider?: string | null;
       effort?: ReasoningEffort | null;
       summary?: ReasoningSummary | null;
       approvalPolicy?: ApprovalPolicy | null;
@@ -215,6 +217,7 @@ export type RealtimeClientMessage =
       threadId: string;
       turnId: string;
       model?: string | null;
+      modelProvider?: string | null;
       effort?: ReasoningEffort | null;
       summary?: ReasoningSummary | null;
     }

@@ -56,6 +56,7 @@ export async function updateTurnSettings(
   const host = requireRecord(hostStore.getWithSecret(request.hostId), "Host not found");
   const result = await threadBroker.updateTurnSettings(host, request.threadId, request.turnId, {
     model: request.model,
+    modelProvider: request.modelProvider,
     effort: request.effort,
     summary: request.summary,
   });

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CheckIcon, ChevronDownIcon } from "@lucide/vue";
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import type {
   AgentProviderId,
   AgentProviderOption,
@@ -19,32 +19,78 @@ import {
   ModelSelectorTrigger,
 } from "@codex-gateway/ai-elements/model-selector";
 import { Button } from "@codex-gateway/ui/button";
+import ModelProviderGroup from "@/components/chat/composer/ModelProviderGroup.vue";
+import { useAccountLocalStorage } from "@/composables/storage/useAccountLocalStorage";
+import { modelSelection, type ModelSelection } from "@/utils/model-selection";
 
-defineProps<{
+const props = defineProps<{
   models: ModelRecord[];
   loadingModels: boolean;
   activeModel: string;
   activeModelLabel: string;
+  activeModelProvider: string | null;
+  activeModelProviderLabel: string;
   hostDefaultModelLabel: string;
   hostDefaultEffortLabel: string;
   activeEffortValue: string;
   activeEffortCompactLabel: string;
   effortOptions: Array<{ value: ReasoningEffort; label?: string }>;
   labelEffortOption: (option: { value: ReasoningEffort; label?: string }) => string;
-  modelOptionValue: (modelOption: { model?: string; id: string }) => string;
   selectedProvider: AgentProviderId;
   providerOptions: readonly AgentProviderOption[];
   canSelectProvider: boolean;
 }>();
 
 const emit = defineEmits<{
-  selectModel: [model: string];
+  selectModel: [selection: ModelSelection];
   selectEffort: [effort: ReasoningEffort];
   selectProvider: [provider: AgentProviderId];
 }>();
 
 const { t } = useI18n();
 const selectorOpen = ref(false);
+const expandedProviders = useAccountLocalStorage<Record<string, boolean>>(
+  "model-provider-groups",
+  {},
+);
+const modelGroups = computed(() => {
+  const groups = new Map<
+    string | null,
+    { provider: string | null; label: string; models: ModelRecord[] }
+  >();
+  for (const model of props.models) {
+    const provider = modelSelection(model).modelProvider;
+    let group = groups.get(provider);
+    if (group === undefined) {
+      group = {
+        provider,
+        label: model.providerDisplayName?.trim() || provider || t("app.modelProviderDefault"),
+        models: [],
+      };
+      groups.set(provider, group);
+    }
+    group.models.push(model);
+  }
+  return [...groups.values()];
+});
+
+function providerIsExpanded(provider: string | null) {
+  return (
+    expandedProviders.value[JSON.stringify(provider)] ??
+    (provider === null || provider === props.activeModelProvider || modelGroups.value.length === 1)
+  );
+}
+
+function toggleProvider(provider: string | null) {
+  expandedProviders.value = {
+    ...expandedProviders.value,
+    [JSON.stringify(provider)]: !providerIsExpanded(provider),
+  };
+}
+
+function providerIsLocked(provider: string | null) {
+  return !props.canSelectProvider && provider !== null && provider !== props.activeModelProvider;
+}
 
 function triggerModelLabel(activeModelLabel: string, hostDefaultModelLabel: string) {
   // The trigger shows the concrete remote value when known. It deliberately does not assign that
@@ -56,8 +102,8 @@ function providerLabel(option: AgentProviderOption) {
   return t(option.labelKey);
 }
 
-function selectModel(model: string) {
-  emit("selectModel", model);
+function selectModel(selection: ModelSelection) {
+  emit("selectModel", selection);
 }
 
 function selectEffort(effort: ReasoningEffort) {
@@ -80,6 +126,7 @@ function preventInitialFocus(event: Event) {
         size="lg"
         class="min-w-0 max-w-full gap-1.5 px-1.5 text-sm font-normal text-ink-secondary hover:bg-canvas-soft sm:gap-2 sm:px-2 md:text-base"
         data-testid="model-select"
+        :data-model-provider="activeModelProvider ?? ''"
         :disabled="loadingModels || !models.length"
       >
         <span class="flex min-w-0 items-center gap-1.5 sm:hidden">
@@ -100,6 +147,13 @@ function preventInitialFocus(event: Event) {
         <span v-if="activeEffortCompactLabel" class="hidden shrink-0 text-ink-muted sm:inline">
           {{ activeEffortCompactLabel }}
         </span>
+        <span
+          v-if="activeModelProviderLabel"
+          class="max-w-24 truncate rounded bg-canvas-soft px-1.5 py-0.5 text-xs text-ink-muted"
+          :title="activeModelProviderLabel"
+        >
+          {{ activeModelProviderLabel }}
+        </span>
         <ChevronDownIcon class="size-4 text-ink-muted" />
       </Button>
     </ModelSelectorTrigger>
@@ -113,7 +167,10 @@ function preventInitialFocus(event: Event) {
       <ModelSelectorInput :auto-focus="false" :placeholder="t('app.searchModels')" />
       <ModelSelectorList class="max-h-[min(60dvh,28rem)] p-1">
         <ModelSelectorEmpty>{{ t("app.noMatchingModels") }}</ModelSelectorEmpty>
-        <ModelSelectorGroup v-if="canSelectProvider" :heading="t('app.agentProvider')">
+        <ModelSelectorGroup
+          v-if="canSelectProvider && providerOptions.length > 1"
+          :heading="t('app.agentProvider')"
+        >
           <ModelSelectorItem
             v-for="option in providerOptions"
             :key="option.id"
@@ -126,7 +183,10 @@ function preventInitialFocus(event: Event) {
             <CheckIcon v-if="option.id === selectedProvider" class="ml-auto size-4 text-primary" />
           </ModelSelectorItem>
         </ModelSelectorGroup>
-        <ModelSelectorSeparator class="my-1" />
+        <ModelSelectorSeparator
+          v-if="canSelectProvider && providerOptions.length > 1"
+          class="my-1"
+        />
         <ModelSelectorGroup :heading="t('app.reasoningEffort')">
           <ModelSelectorItem
             value="effort:default"
@@ -155,12 +215,12 @@ function preventInitialFocus(event: Event) {
           </ModelSelectorItem>
         </ModelSelectorGroup>
         <ModelSelectorSeparator class="my-1" />
-        <ModelSelectorGroup :heading="t('app.model')">
+        <ModelSelectorGroup v-if="canSelectProvider" :heading="t('app.model')">
           <ModelSelectorItem
             value="model:host-default"
             data-testid="model-option-host-default"
             class="min-h-11 rounded-lg px-3 text-sm text-ink"
-            @select="selectModel('')"
+            @select="selectModel({ model: '', modelProvider: null })"
           >
             <span class="truncate">{{ t("app.modelHostDefault") }}</span>
             <span
@@ -171,23 +231,27 @@ function preventInitialFocus(event: Event) {
             </span>
             <CheckIcon v-if="activeModel === ''" class="ml-auto size-4 text-primary" />
           </ModelSelectorItem>
-          <ModelSelectorItem
-            v-for="modelOption in models"
-            :key="modelOption.id"
-            :value="`model:${modelOptionValue(modelOption)}`"
-            :data-testid="`model-option-${modelOptionValue(modelOption)}`"
-            class="min-h-11 rounded-lg px-3 text-sm text-ink"
-            @select="selectModel(modelOptionValue(modelOption))"
-          >
-            <span class="truncate">{{
-              modelOption.displayName || modelOption.model || modelOption.id
-            }}</span>
-            <CheckIcon
-              v-if="modelOptionValue(modelOption) === activeModel"
-              class="ml-auto size-4 text-primary"
-            />
-          </ModelSelectorItem>
         </ModelSelectorGroup>
+        <p
+          v-if="!canSelectProvider && modelGroups.some((group) => providerIsLocked(group.provider))"
+          class="px-4 py-2 text-xs text-ink-muted"
+          data-testid="model-provider-lock-hint"
+        >
+          {{ t("app.modelProviderLocked") }}
+        </p>
+        <ModelProviderGroup
+          v-for="group in modelGroups"
+          :key="JSON.stringify(group.provider)"
+          :provider="group.provider"
+          :label="group.label"
+          :models="group.models"
+          :active-model="activeModel"
+          :active-model-provider="activeModelProvider"
+          :expanded="providerIsExpanded(group.provider)"
+          :locked="providerIsLocked(group.provider)"
+          @toggle="toggleProvider(group.provider)"
+          @select-model="selectModel"
+        />
       </ModelSelectorList>
     </ModelSelectorContent>
   </ModelSelector>

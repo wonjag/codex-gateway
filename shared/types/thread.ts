@@ -105,6 +105,7 @@ export interface ThreadCollaborationMode {
 
 export interface ThreadSettingsState {
   model?: string | null;
+  modelProvider?: string | null;
   effort?: ReasoningEffort | null;
   summary?: ReasoningSummary | null;
   approvalPolicy?: ApprovalPolicy | null;
@@ -147,6 +148,7 @@ export interface FileReference {
 export interface ComposerTurnOptions {
   provider?: AgentProviderId;
   model?: string | null;
+  modelProvider?: string | null;
   effort?: ReasoningEffort | null;
   summary?: ReasoningSummary | null;
   approvalPolicy?: ApprovalPolicy | null;

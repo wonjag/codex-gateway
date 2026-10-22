@@ -178,6 +178,7 @@ export async function insertQueuedTurn(request: QueueRequest) {
         attempt.dispatched = true;
         return true;
       },
+      input.modelProvider,
     );
     // ACK means the runtime accepted the input, not that the model has consumed or obeyed it.
     if (result !== null) setStatus(scope, id, "sent");
@@ -239,6 +240,11 @@ export async function handleTurnQueue(request: QueueRequest) {
       "SELECT 1 FROM turn_queue WHERE user_id=? AND host_id=? AND thread_id=? AND message_id=?",
     );
     if (findExisting.get(userId(), scope.hostId, scope.threadId, id)) return publish(scope);
+    input.modelProvider = await threadBroker.validateThreadModelSelection(
+      host,
+      scope.threadId,
+      input,
+    );
     const workspace = await threadBroker.readThreadWorkspace(host, scope.threadId);
     if (findExisting.get(userId(), scope.hostId, scope.threadId, id)) return publish(scope);
     const mismatch = project.remotePath !== workspace.cwd;

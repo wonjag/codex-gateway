@@ -161,5 +161,14 @@ function snapshotThread(snapshot: ThreadOpenSnapshot) {
 
 function updateSnapshotThreadSettings(snapshot: ThreadOpenSnapshot, value: unknown) {
   const threadSettings = threadSettingsFromAppServer(value);
-  return threadSettings === null ? snapshot : { ...snapshot, threadSettings };
+  return threadSettings === null
+    ? snapshot
+    : {
+        ...snapshot,
+        threadSettings: {
+          ...threadSettings,
+          // Native settings notifications omit the provider because it cannot change here.
+          modelProvider: snapshot.thread.modelProvider,
+        },
+      };
 }
