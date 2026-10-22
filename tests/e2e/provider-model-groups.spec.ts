@@ -256,13 +256,20 @@ test.describe("provider model groups", () => {
       try {
         const mobile = await mobileContext.newPage();
         await openApp(mobile, { resetConfig: false });
+        await mobile.goto(`/?hostId=${host.id}&projectId=${project.id}&threadId=${threadId}`, {
+          waitUntil: "domcontentloaded",
+        });
         await expect(mobile.getByTestId("mobile-layout")).toBeVisible();
         await expect(mobile.getByTestId("model-select")).toHaveAttribute(
           "data-model-provider",
           provider,
         );
         await assertExistingProviderLocked(mobile, provider, true);
-        await reloadApp(mobile);
+        // This second browser shares the existing config. reloadApp's first-page reset would
+        // erase that config after openApp(resetConfig: false), so exercise a plain browser reload.
+        await mobile.reload({ waitUntil: "domcontentloaded" });
+        await expect(mobile.getByTestId("app-ready")).toBeAttached({ timeout: 90_000 });
+        await expect(mobile.getByTestId("mobile-layout")).toBeVisible();
         await expect(mobile.getByTestId("model-select")).toHaveAttribute(
           "data-model-provider",
           provider,
