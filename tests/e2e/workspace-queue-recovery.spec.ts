@@ -353,10 +353,9 @@ async function createNativeThread(remote: RemoteCodexEnv, cwd: string, marker: s
   if (remote.testModel !== undefined) args.push("-m", remote.testModel);
   args.push(`Reply exactly ${marker}, without calling any tools.`);
   // SSH exec leaves stdin open. Explicit EOF prevents Codex from waiting for additional input.
-  const { stdout } = await execRemoteSsh(
-    remote,
-    `timeout 120s ${remoteCodexCommand(remote)} ${quote(args)} < /dev/null`,
-  );
+  // The login shell also loads the optional fixture proxy used by the native app-server.
+  const command = `${remoteCodexCommand(remote)} ${quote(args)} < /dev/null`;
+  const { stdout } = await execRemoteSsh(remote, `timeout 120s bash -lc ${quote([command])}`);
   const events = z.array(z.object({ type: z.string(), thread_id: z.string().optional() })).parse(
     stdout
       .trim()

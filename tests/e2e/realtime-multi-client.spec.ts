@@ -319,11 +319,12 @@ test("fans out a real remote app-server thread to multiple browser clients acros
 
     await openThreadFromProjectOrRestoredState(secondPage, host.id, project.id, threadId);
     await expect(secondPage.getByPlaceholder("输入后续修改要求")).toBeEnabled();
-    await expect
-      .poll(async () => secondPage.getByTestId("chat-scroll-area").getByText(firstMarker).count(), {
-        timeout: AGENT_OUTPUT_TIMEOUT_MS,
-      })
-      .toBeGreaterThan(0);
+    const restoredFirstTurn = secondPage
+      .getByTestId("chat-scroll-area")
+      .getByText(firstMarker)
+      .first();
+    await revealVirtualizedChatLocator(secondPage, restoredFirstTurn);
+    await expect(restoredFirstTurn).toBeVisible();
     await secondPage.getByTestId("chat-scroll-area").evaluate((root) => {
       const viewport = root.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
       if (viewport !== null) viewport.scrollTop = viewport.scrollHeight;
