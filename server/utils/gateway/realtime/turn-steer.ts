@@ -14,6 +14,7 @@ export type RealtimeTurnSteerMessage = Extract<RealtimeClientMessage, { type: "t
 export async function steerTurnFromRealtime(
   message: RealtimeTurnSteerMessage,
   onDispatch?: () => boolean,
+  modelProvider?: string | null,
 ) {
   const input = turnSteerSchema.parse(message);
   const host = requireRecord(hostStore.getWithSecret(input.hostId), "Host not found");
@@ -30,6 +31,6 @@ export async function steerTurnFromRealtime(
       images: input.images,
       additionalContext: fileReferencesAdditionalContext(references),
     },
-    { cwd: project.remotePath, onDispatch: onDispatch ?? (() => true) },
+    { cwd: project.remotePath, modelProvider, onDispatch: onDispatch ?? (() => true) },
   );
 }

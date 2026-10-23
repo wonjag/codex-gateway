@@ -4,6 +4,7 @@ import { storeToRefs } from "pinia";
 import type { UploadedFileRecord } from "~~/shared/types";
 import { useGatewayComposerStore } from "@/stores/gateway-composer";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
+import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { selectedThreadKey } from "@/stores/gateway/thread-utils/identity";
 import type { ComposerFileReference } from "@/stores/gateway/types";
 
@@ -12,7 +13,8 @@ export type ComposerAttachment = UploadedFileRecord & { id: string; dataUrl?: st
 export function useComposerDraft() {
   const composer = useGatewayComposerStore();
   const navigation = useGatewayNavigationStore();
-  const { selectedHostId, selectedThreadId } = storeToRefs(navigation);
+  const views = useGatewayThreadViewStore();
+  const { selectedHostId, selectedThreadId, selectedProjectId } = storeToRefs(navigation);
   const turnText = ref("");
   const attachedFiles = ref<ComposerAttachment[]>([]);
   const fileReferences = ref<ComposerFileReference[]>([]);
@@ -21,7 +23,7 @@ export function useComposerDraft() {
   let syncingDraft = false;
 
   watch(
-    [selectedHostId, selectedThreadId],
+    [selectedHostId, selectedThreadId, selectedProjectId, () => views.newThreadDraftToken],
     ([hostId, threadId]) => {
       syncingDraft = true;
       activeHostId = hostId;

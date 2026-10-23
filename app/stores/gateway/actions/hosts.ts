@@ -23,6 +23,7 @@ export function createHostActions() {
     navigation.threads = [];
     views.resetCurrentView();
     catalog.models = [];
+    catalog.defaultModelProvider = null;
     catalog.modelsHostId = null;
     useGatewayBootstrapStore().clearError();
   }

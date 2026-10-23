@@ -34,6 +34,7 @@ export async function refreshGatewayClient() {
     catalog.projectDirectoryAvailability = {};
     navigation.threads = [];
     catalog.models = [];
+    catalog.defaultModelProvider = null;
     catalog.modelsHostId = null;
     if (!(await config.loadConfigFromServer()) || !sessionIsCurrent()) return;
 

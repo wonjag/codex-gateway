@@ -5,5 +5,6 @@ import type { ReasoningEffort } from "./thread";
 export interface AgentProjectDefaults {
   provider: AgentProviderId;
   model: string | null;
+  modelProvider?: string | null;
   effort: ReasoningEffort | null;
 }

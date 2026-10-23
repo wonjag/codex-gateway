@@ -9,6 +9,8 @@ x-build-proxy: &build-proxy
 x-ssh-target: &ssh-target
   environment:
     CODEX_HOME: /home/codex/.codex
+    E2E_CODEX_PROXY_URL: ${E2E_CODEX_PROXY_URL:-}
+    E2E_CODEX_NO_PROXY: ${E2E_CODEX_NO_PROXY:-localhost,127.0.0.1,::1}
   volumes:
     - ../..:/workspace/codex-gateway
 
@@ -121,6 +123,7 @@ services:
       CODEX_GATEWAY_CONFIG_SECRET: e2e-config-secret
       CODEX_GATEWAY_DB_PATH: /workspace/codex-gateway/.data-e2e/codex-gateway.db
       NUXT_IGNORE_LOCK: "1"
+      CODEX_GATEWAY_MODEL_GROUPS: ${E2E_MODEL_GROUPS:-}
       # Preview origins enter through the nginx sidecar below. This mirrors production so remote
       # /_nuxt/* assets cannot be intercepted as Gateway public assets before reaching the proxy.
       BROWSER_PREVIEW_PUBLIC_PORT: "3200"
@@ -187,6 +190,8 @@ services:
       E2E_REMOTE_PROJECT_PATH: /workspace/codex-gateway
       E2E_CODEX_CLI_VERSION: ${E2E_CODEX_CLI_VERSION:-0.140.0}
       E2E_CODEX_MODEL: ${E2E_CODEX_MODEL:-gpt-6-luna}
+      E2E_CODEX_TURN: ${E2E_CODEX_TURN:-0}
+      E2E_MODEL_GROUPS: ${E2E_MODEL_GROUPS:-}
       E2E_BARK_SERVER_URL: http://bark-target:8080
       E2E_BARK_REQUEST_LOG: /bark-requests/requests.jsonl
       PLAYWRIGHT_BASE_URL: http://codex.127.0.0.1.nip.io:3100

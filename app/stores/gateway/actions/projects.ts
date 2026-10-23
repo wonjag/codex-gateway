@@ -1,5 +1,6 @@
 import type {
   ModelListResult,
+  ModelRecord,
   ProjectCreateInput,
   ProjectRecord,
   ProjectUpdateInput,
@@ -42,12 +43,36 @@ export function createProjectActions() {
     const projectId = navigation.selectedProjectId;
     const threadId = navigation.selectedThreadId;
     try {
-      const response = await gatewayApi<ModelListResult>("/api/models", {
-        query: { hostId, includeHidden: false, limit: 50 },
-      });
-      if (!sessionIsCurrent() || navigation.selectedHostId !== hostId) return;
-      catalog.models = response.data ?? [];
-      catalog.modelsHostId = hostId;
+      const models: ModelRecord[] = [];
+      const cursors = new Set<string>();
+      let cursor: string | null = null;
+      let defaultModelProvider: string | null | undefined;
+      // Grouping can repeat each native model under several providers. Publish only a complete
+      // catalog so a later provider is never silently missing because it fell on another page.
+      for (let page = 0; page < 100; page += 1) {
+        const response: ModelListResult = await gatewayApi<ModelListResult>("/api/models", {
+          query: { hostId, includeHidden: false, limit: 100, cursor },
+        });
+        if (!sessionIsCurrent() || navigation.selectedHostId !== hostId) return;
+        const provider = response.defaultModelProvider ?? null;
+        if (defaultModelProvider !== undefined && provider !== defaultModelProvider) {
+          throw new Error(bootstrap.t("app.modelCatalogPaginationFailed"));
+        }
+        defaultModelProvider = provider;
+        models.push(...response.data);
+        cursor = response.nextCursor ?? null;
+        if (cursor === null) {
+          catalog.models = models;
+          catalog.defaultModelProvider = defaultModelProvider;
+          catalog.modelsHostId = hostId;
+          return;
+        }
+        if (cursor === "" || cursors.has(cursor)) {
+          throw new Error(bootstrap.t("app.modelCatalogPaginationFailed"));
+        }
+        cursors.add(cursor);
+      }
+      throw new Error(bootstrap.t("app.modelCatalogPaginationFailed"));
     } catch (error: unknown) {
       if (!sessionIsCurrent()) return;
       bootstrap.setError(
@@ -81,6 +106,7 @@ export function createProjectActions() {
       const hostId = useGatewayNavigationStore().selectedHostId;
       if (hostId === null) {
         catalog.models = [];
+        catalog.defaultModelProvider = null;
         catalog.modelsHostId = null;
         return;
       }

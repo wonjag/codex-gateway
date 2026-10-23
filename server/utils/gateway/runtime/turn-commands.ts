@@ -12,8 +12,9 @@ import { recordFromUnknown, stringFromUnknown } from "~~/shared/utils/records";
 import { trimmedOrFallback } from "~~/shared/utils/strings";
 import { parseTurnStartResponse, parseTurnSteerResponse } from "~~/shared/runtime/app-server";
 import { recordAcceptedUserMessage } from "./accepted-user-message";
-import { threadSnapshotStore } from "../state/thread-snapshots";
 import { resolveThreadProjectId, ThreadWorkspaceMismatchError } from "./thread-workspace";
+import { readThreadModelState, validateThreadModelSelection } from "./thread-model-routing";
+import { assertThreadModelProvider } from "./model-route-errors";
 
 export class ThreadTurnCommandService {
   constructor(
@@ -22,26 +23,22 @@ export class ThreadTurnCommandService {
   ) {}
 
   async readThreadWorkspace(host: HostRecord, threadId: string) {
-    const snapshot = threadSnapshotStore.get(host.id, threadId);
-    const thread =
-      snapshot?.thread.path === null
-        ? snapshot.thread
-        : (
-            await (
-              await this.registry.getHostClient(host)
-            ).request(
-              "thread/read",
-              { threadId, includeTurns: false },
-              30_000,
-              parseThreadReadResult,
-            )
-          ).thread;
+    const thread = await readThreadModelState(
+      await this.registry.getHostClient(host),
+      host.id,
+      threadId,
+    );
     if (typeof thread.cwd !== "string" || thread.cwd.trim() === "") {
       throw new Error("Thread workspace is unavailable");
     }
     const projectId = resolveThreadProjectId(host.id, null, thread.cwd);
     if (projectId === null) throw new Error("Thread workspace is unavailable");
-    return { projectId, cwd: thread.cwd };
+    return {
+      projectId,
+      cwd: thread.cwd,
+      model: thread.model,
+      modelProvider: thread.modelProvider,
+    };
   }
 
   async startTurn(host: HostRecord, threadId: string, input: TurnStartInput) {
@@ -54,6 +51,7 @@ export class ThreadTurnCommandService {
         const workspace = await this.readThreadWorkspace(host, threadId);
         if (input.cwd != null && workspace.cwd !== input.cwd)
           throw new ThreadWorkspaceMismatchError();
+        await validateThreadModelSelection(controller.client, host.id, workspace, input);
         maybeGenerateThreadTitle(
           host,
           threadId,
@@ -104,6 +102,7 @@ export class ThreadTurnCommandService {
               ).thread;
         if (thread.status.type !== "idle") return null;
         if (input.cwd != null && thread.cwd !== input.cwd) throw new ThreadWorkspaceMismatchError();
+        await validateThreadModelSelection(controller.client, host.id, thread, input);
         if (onStarting !== undefined && !onStarting()) return null;
         const clientUserMessageId = input.clientUserMessageId ?? `gateway-${randomUUID()}`;
         maybeGenerateThreadTitle(host, threadId, thread.preview || input.text);
@@ -132,7 +131,7 @@ export class ThreadTurnCommandService {
     host: HostRecord,
     threadId: string,
     input: TurnSteerInput,
-    queued?: { cwd: string; onDispatch: () => boolean },
+    queued?: { cwd: string; modelProvider?: string | null; onDispatch: () => boolean },
   ) {
     const clientUserMessageId = trimmedOrFallback(
       input.clientUserMessageId,
@@ -149,6 +148,7 @@ export class ThreadTurnCommandService {
               parseThreadReadResult,
             );
             if (thread.cwd !== queued.cwd) throw new ThreadWorkspaceMismatchError();
+            assertThreadModelProvider(queued.modelProvider, thread.modelProvider);
             if (!queued.onDispatch()) return null;
           }
           // Native steer owns the model/tool boundary. Never cancel a tool, interrupt the turn,

@@ -147,6 +147,7 @@ export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z.d
         cwd: nullableString,
         provider: agentProviderIdSchema.optional(),
         model: nullableString,
+        modelProvider: nonEmptyString.nullable().optional(),
         effort: nullableString,
         summary: reasoningSummarySchema.nullable().optional(),
         approvalPolicy,
@@ -194,6 +195,7 @@ export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z.d
         clientUserMessageId: nullableString,
         cwd: nullableString,
         model: nullableString,
+        modelProvider: nonEmptyString.nullable().optional(),
         effort: nullableString,
         summary: reasoningSummarySchema.nullable().optional(),
         approvalPolicy,
@@ -253,6 +255,7 @@ export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z.d
         ...threadScopeFields,
         turnId: nonEmptyString,
         model: nullableString,
+        modelProvider: nonEmptyString.nullable().optional(),
         effort: nullableString,
         summary: reasoningSummarySchema.nullable().optional(),
       })

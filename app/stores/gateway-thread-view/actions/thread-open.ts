@@ -86,6 +86,7 @@ export function createThreadOpenActions() {
       const viewEpoch = beginViewTransition();
       if (gateway.modelsHostId !== targetHostId) {
         gateway.models = [];
+        gateway.defaultModelProvider = null;
         gateway.modelsHostId = null;
       }
       activatePendingThreadView(targetHostId, targetProjectId, threadId);
@@ -284,7 +285,7 @@ export function createThreadOpenActions() {
     async startThread(
       options: ComposerTurnOptions = {},
       context?: { hostId?: number; projectId?: number | null },
-    ) {
+    ): Promise<string | null> {
       const navigation = useGatewayNavigationStore();
       cacheSelectedThreadView();
       const viewEpoch = beginViewTransition();
@@ -294,10 +295,10 @@ export function createThreadOpenActions() {
         navigation.selectedProjectId = context.projectId ?? null;
         clearCurrentThreadView();
       }
-      if (navigation.selectedHostId === null) return;
+      if (navigation.selectedHostId === null) return null;
       const sessionIsCurrent = captureSessionEpoch();
       const result = await requestStartThread(options);
-      if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return;
+      if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return null;
       const threadId = applyStartedThreadResult(result);
       cacheSelectedThreadView();
       rememberOpenThread(threadId);
@@ -313,7 +314,9 @@ export function createThreadOpenActions() {
       // before refreshing the sidebar catalog: that secondary RPC may be slow while a host has
       // just upgraded/restarted, but it must not leave a successfully created thread unreachable.
       await navigation.listThreads();
+      if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return null;
       cacheSelectedThreadView();
+      return threadId;
     },
   };
 }

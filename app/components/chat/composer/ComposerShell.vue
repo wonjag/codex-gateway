@@ -13,6 +13,7 @@ import type {
 import type { ComposerAttachment } from "@/composables/composer/useComposerDraft";
 import type { ComposerFileReference } from "@/stores/gateway/types";
 import type { ComposerGoalPendingAction } from "@/composables/composer/useComposerGoalControls";
+import type { ModelSelection } from "@/utils/model-selection";
 import type { SlashMenuItem } from "@/composables/composer/useSlashCommands";
 import AttachmentChips from "@/components/chat/composer/AttachmentChips.vue";
 import ComposerModeStrip from "@/components/chat/composer/ComposerModeStrip.vue";
@@ -47,13 +48,14 @@ const props = defineProps<{
   loadingModels: boolean;
   activeModel: string;
   activeModelLabel: string;
+  activeModelProvider: string | null;
+  activeModelProviderLabel: string;
   hostDefaultModelLabel: string;
   hostDefaultEffortLabel: string;
   activeEffortValue: string;
   activeEffortCompactLabel: string;
   effortOptions: Array<{ value: ReasoningEffort; label?: string }>;
   labelEffortOption: (option: { value: ReasoningEffort; label?: string }) => string;
-  modelOptionValue: (modelOption: { model?: string; id: string }) => string;
   hasComposerInput: boolean;
   isThreadRunning: boolean;
   canInterruptTurn: boolean;
@@ -80,7 +82,7 @@ const emit = defineEmits<{
   fileReferenceLimit: [message: string];
   primaryAction: [];
   updateSelectedApprovalMode: [mode: ApprovalPolicy | "custom"];
-  selectModel: [model: string];
+  selectModel: [selection: ModelSelection];
   selectEffort: [effort: ReasoningEffort];
   selectProvider: [provider: AgentProviderId];
 }>();
@@ -172,13 +174,14 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           :loading-models="loadingModels"
           :active-model="activeModel"
           :active-model-label="activeModelLabel"
+          :active-model-provider="activeModelProvider"
+          :active-model-provider-label="activeModelProviderLabel"
           :host-default-model-label="hostDefaultModelLabel"
           :host-default-effort-label="hostDefaultEffortLabel"
           :active-effort-value="activeEffortValue"
           :active-effort-compact-label="activeEffortCompactLabel"
           :effort-options="effortOptions"
           :label-effort-option="labelEffortOption"
-          :model-option-value="modelOptionValue"
           :has-composer-input="hasComposerInput"
           :is-thread-running="isThreadRunning"
           :can-interrupt-turn="canInterruptTurn"

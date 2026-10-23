@@ -12,16 +12,20 @@ import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { useGatewayComposerStore } from "@/stores/gateway-composer";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayProjectDefaultsStore } from "@/stores/gateway-project-defaults";
+import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
+import { modelSelection, type ModelSelection } from "@/utils/model-selection";
 
 export function useThreadSettingsControls() {
   const gateway = useGatewayCatalogStore();
   const composer = useGatewayComposerStore();
   const navigation = useGatewayNavigationStore();
   const projectDefaultsStore = useGatewayProjectDefaultsStore();
-  const { models, defaultModel } = storeToRefs(gateway);
+  const threadView = useGatewayThreadViewStore();
+  const { models, defaultModel, defaultModelProvider } = storeToRefs(gateway);
   const { selectedThreadSettings } = storeToRefs(composer);
   const { selectedHostId, selectedProjectId, selectedThreadId } = storeToRefs(navigation);
   const newThreadModel = ref("");
+  const newThreadModelProvider = ref<string | null>(null);
   const newThreadEffort = ref<ReasoningEffort>("default");
   const newThreadApprovalMode = ref<ApprovalPolicy | "custom">("custom");
   const selectedProvider = ref<AgentProviderId>("codex");
@@ -37,6 +41,52 @@ export function useThreadSettingsControls() {
   const newThreadProjectDefaults = computed(() =>
     selectedThreadId.value === null ? projectDefaults.value : null,
   );
+  const currentThread = computed(() => {
+    const thread = threadView.currentThread;
+    return thread?.id === selectedThreadId.value && thread?.hostId === selectedHostId.value
+      ? thread
+      : null;
+  });
+  const existingModelProvider = computed(() =>
+    firstNonEmptyString([
+      currentThread.value?.modelProvider,
+      selectedThreadSettings.value.modelProvider,
+    ]),
+  );
+  // The explicit new-thread override remains separate from the effective default used for display.
+  // Existing threads retain their native provider even when a model override is cleared.
+  const selectedModelProvider = computed(() =>
+    selectedThreadId.value === null ? newThreadModelProvider.value : existingModelProvider.value,
+  );
+  const activeModelProvider = computed(() =>
+    selectedThreadId.value === null
+      ? firstNonEmptyString([
+          newThreadModelProvider.value,
+          newThreadProjectDefaults.value?.modelProvider,
+          defaultModelProvider.value,
+          defaultModel.value?.modelProvider,
+        ])
+      : existingModelProvider.value,
+  );
+  const providerModels = computed(() =>
+    models.value.filter((model) => {
+      const provider = modelSelection(model).modelProvider;
+      return provider === null || provider === activeModelProvider.value;
+    }),
+  );
+  const activeModelProviderLabel = computed(() => {
+    const record = models.value.find(
+      (model) => modelSelection(model).modelProvider === activeModelProvider.value,
+    );
+    return firstNonEmptyString([record?.providerDisplayName, activeModelProvider.value]) ?? "";
+  });
+
+  watch([selectedHostId, selectedProjectId, () => threadView.newThreadDraftToken], () => {
+    newThreadModel.value = "";
+    newThreadModelProvider.value = null;
+    newThreadEffort.value = "default";
+    newThreadApprovalMode.value = "custom";
+  });
 
   watch(
     [selectedHostId, selectedProjectId, selectedProvider],
@@ -54,22 +104,14 @@ export function useThreadSettingsControls() {
   // model catalog arrive independently, and a transient model default can otherwise be written
   // back as the thread's setting. Local refs are retained only for the pre-thread composer, where
   // no app-server thread identity exists yet.
-  const selectedModel = computed({
+  const selectedModel = computed(() =>
     // An empty new-thread model is the remote-default state: thread.start omits model and effort.
     // The concrete label comes from config/read, but displaying that value must never turn it into
     // a Gateway override because Codex may resolve a changed config by the time creation runs.
-    get: () =>
-      selectedThreadId.value === null
-        ? newThreadModel.value
-        : (trimmedOrNull(selectedThreadSettings.value.model) ?? ""),
-    set: (model: string) => {
-      if (selectedThreadId.value === null) {
-        newThreadModel.value = model;
-        return;
-      }
-      void composer.saveSelectedThreadSettings({ model: trimmedOrNull(model) });
-    },
-  });
+    selectedThreadId.value === null
+      ? newThreadModel.value
+      : (trimmedOrNull(selectedThreadSettings.value.model) ?? ""),
+  );
   const selectedEffort = computed<ReasoningEffort>({
     get: () =>
       selectedThreadId.value === null
@@ -101,30 +143,31 @@ export function useThreadSettingsControls() {
 
   const activeModel = computed(() => selectedModel.value);
   // Plan is an explicit app-server setting update, so it needs a concrete model even during the
-  // short interval before an existing thread's settings notification arrives. Keep this effective
-  // value separate from activeModel: using the catalog default here must not make the model picker
-  // claim that the resumed thread already selected that model.
+  // short interval before an existing thread's settings notification arrives. Use the native
+  // thread model in that interval: the first catalog entry need not be this thread's model.
   const collaborationModel = computed(
     () =>
       firstNonEmptyString([
         selectedThreadSettings.value.collaborationMode?.settings.model,
         selectedModel.value,
         newThreadProjectDefaults.value?.model,
-        defaultModel.value?.model,
-        defaultModel.value?.id,
+        currentThread.value?.model,
       ]) ?? "",
   );
   const activeModelRecord = computed(() => {
-    const match = models.value.find(
+    const match = providerModels.value.find(
       (candidate) => candidate.model === activeModel.value || candidate.id === activeModel.value,
     );
     // config/read supplies the actual model selected by the remote config layers. models/list is
     // used only to enrich that concrete id with display metadata and supported effort choices.
     if (match !== undefined) return match;
     if (activeModel.value !== "") return null;
-    const remoteModel = newThreadProjectDefaults.value?.model;
+    const remoteModel =
+      selectedThreadId.value === null
+        ? newThreadProjectDefaults.value?.model
+        : currentThread.value?.model;
     return (
-      models.value.find(
+      providerModels.value.find(
         (candidate) => candidate.model === remoteModel || candidate.id === remoteModel,
       ) ?? null
     );
@@ -137,14 +180,23 @@ export function useThreadSettingsControls() {
     return firstNonEmptyString([model?.displayName, model?.model, activeModel.value]) ?? "";
   });
   const hostDefaultModelLabel = computed(() => {
-    const model = activeModelRecord.value;
-    return (
-      firstNonEmptyString([
-        model?.displayName,
-        model?.model,
-        newThreadProjectDefaults.value?.model,
-      ]) ?? ""
-    );
+    const remoteModel =
+      selectedThreadId.value === null
+        ? newThreadProjectDefaults.value?.model
+        : currentThread.value?.model;
+    const remoteProvider =
+      newThreadProjectDefaults.value?.modelProvider ?? defaultModelProvider.value;
+    const model =
+      selectedThreadId.value === null
+        ? models.value.find(
+            (candidate) =>
+              (candidate.model === remoteModel || candidate.id === remoteModel) &&
+              (candidate.modelProvider == null || candidate.modelProvider === remoteProvider),
+          )
+        : providerModels.value.find(
+            (candidate) => candidate.model === remoteModel || candidate.id === remoteModel,
+          );
+    return firstNonEmptyString([model?.displayName, model?.model, remoteModel]) ?? "";
   });
   // activeEffortValue is the picker's selection state: empty means "follow the host default" and
   // no override is sent. The effective effort (model-level default) is display-only and resolved
@@ -154,7 +206,7 @@ export function useThreadSettingsControls() {
   );
   const hostDefaultEffortLabel = computed(() =>
     compactEffortLabel(
-      newThreadProjectDefaults.value?.effort ??
+      (activeModel.value === "" ? newThreadProjectDefaults.value?.effort : null) ??
         activeModelRecord.value?.defaultReasoningEffort ??
         "",
     ),
@@ -202,12 +254,20 @@ export function useThreadSettingsControls() {
     return compactEffortLabel(trimmedOrFallback(option.label, option.value));
   }
 
-  function modelOptionValue(modelOption: { model?: string; id: string }) {
-    return trimmedOrFallback(modelOption.model, modelOption.id);
-  }
-
-  function setSelectedModel(model: string) {
-    selectedModel.value = model;
+  function setSelectedModel(selection: ModelSelection) {
+    const model = trimmedOrNull(selection.model);
+    const modelProvider = model === null ? null : trimmedOrNull(selection.modelProvider);
+    if (selectedThreadId.value === null) {
+      newThreadModel.value = model ?? "";
+      newThreadModelProvider.value = modelProvider;
+      return;
+    }
+    // Native model:null preserves an existing model. Do not invent a local "default" state that
+    // erases its actual model or makes a later Plan action pick another catalog entry.
+    if (model === null) return;
+    // A source is fixed by the native thread. Browsing another group must never alter that source.
+    if (modelProvider !== null && modelProvider !== existingModelProvider.value) return;
+    void composer.saveSelectedThreadSettings({ model, modelProvider });
   }
 
   function setSelectedEffort(effort: ReasoningEffort) {
@@ -227,9 +287,12 @@ export function useThreadSettingsControls() {
 
   return {
     selectedModel,
+    selectedModelProvider,
     selectedEffort,
     selectedApprovalMode,
     activeModel,
+    activeModelProvider,
+    activeModelProviderLabel,
     collaborationModel,
     activeModelLabel,
     hostDefaultModelLabel,
@@ -238,7 +301,6 @@ export function useThreadSettingsControls() {
     activeEffortCompactLabel,
     effortOptions,
     labelEffortOption,
-    modelOptionValue,
     setSelectedModel,
     setSelectedEffort,
     setSelectedApprovalMode,

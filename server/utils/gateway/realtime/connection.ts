@@ -183,5 +183,6 @@ function realtimeErrorCode(error: unknown) {
   if (isStaleThreadCursorErrorLike(error)) {
     return STALE_THREAD_CURSOR_ERROR_CODE;
   }
-  return "realtimeMessageFailed";
+  const code = recordFromUnknown(error)?.code;
+  return typeof code === "string" ? code : "realtimeMessageFailed";
 }

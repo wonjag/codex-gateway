@@ -52,7 +52,14 @@ test("new threads display and inherit the remote Codex defaults", async ({
   await expect(picker).not.toContainText(/主机默认|Codex 默认/);
   await expect(picker).toContainText(effortDisplayLabel(configured.effort));
   await picker.click();
-  const configuredModelOption = page.getByTestId(`model-option-${configured.model}`);
+  const selectedModelProvider = await picker.getAttribute("data-model-provider");
+  const modelProvider =
+    selectedModelProvider === null || selectedModelProvider === ""
+      ? "default"
+      : selectedModelProvider;
+  const configuredModelOption = page
+    .getByTestId(`model-provider-group-${modelProvider}`)
+    .getByTestId(`model-option-${configured.model}`);
   await expect(configuredModelOption).toBeVisible();
   const configuredModelLabel = (await configuredModelOption.innerText()).trim();
   await expect(page.getByTestId("model-option-host-default")).toContainText(configuredModelLabel);
@@ -64,6 +71,8 @@ test("new threads display and inherit the remote Codex defaults", async ({
   const offset = await realtimeClientMessageCount(page);
   await page.getByPlaceholder("输入后续修改要求").fill("/");
   await page.getByTestId("slash-command-new").click();
+  await expect(page.getByTestId("new-thread-draft")).toBeVisible();
+  await page.evaluate(async () => window.__codexGatewayE2e?.views.startThread());
   const threadStart = z
     .object({
       hostId: z.number(),
@@ -314,6 +323,8 @@ test("connects to a real SSH Codex host and lists a project thread created by ap
   await expect(page.getByTestId("slash-command-new")).toBeVisible();
   await expect(page.getByTestId("slash-command-plan")).toBeHidden();
   await page.getByTestId("slash-command-new").click();
+  await expect(page.getByTestId("new-thread-draft")).toBeVisible();
+  await page.evaluate(async () => window.__codexGatewayE2e?.views.startThread());
   const slashNewThreadId = await waitForSelectedThreadId(page);
   await expect(page.getByTestId(`thread-button-${slashNewThreadId}`)).toBeVisible({
     timeout: 30_000,

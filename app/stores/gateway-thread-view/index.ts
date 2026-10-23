@@ -13,11 +13,14 @@ import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { createThreadLiveEventActions } from "./actions/live-events";
 import { createSubAgentPanelActions } from "./actions/sub-agent-panels";
 import { createThreadOpenActions } from "./actions/thread-open";
+import { prepareNewThread } from "./actions/new-thread";
 
 export const useGatewayThreadViewStore = defineStore("gateway-thread-view", () => {
   const threadViews = ref<Record<string, ThreadViewState>>({});
   const subAgentPanels = ref<SubAgentPanelState[]>([]);
   const viewEpoch = ref(0);
+  const newThreadDraftActive = ref(false);
+  const newThreadDraftToken = ref(0);
   const currentThread = ref<GatewayThread | null>(null);
   const history = ref<ThreadTimelineHistoryState | null>(null);
   const events = ref<GatewayEvent[]>([]);
@@ -31,6 +34,7 @@ export const useGatewayThreadViewStore = defineStore("gateway-thread-view", () =
   const expandedTurnsByThread = new Map<string, string>();
   const liveEventActions = createThreadLiveEventActions();
   const actions = {
+    prepareNewThread,
     ...liveEventActions,
     ...createThreadOpenActions(),
     ...createSubAgentPanelActions(),
@@ -66,6 +70,7 @@ export const useGatewayThreadViewStore = defineStore("gateway-thread-view", () =
   }
 
   function resetCurrentView() {
+    newThreadDraftActive.value = false;
     currentThread.value = null;
     history.value = null;
     events.value = [];
@@ -83,6 +88,7 @@ export const useGatewayThreadViewStore = defineStore("gateway-thread-view", () =
     expandedTurnsByThread.clear();
     subAgentPanels.value = [];
     viewEpoch.value = 0;
+    newThreadDraftToken.value = 0;
     scrollToLatestToken.value = 0;
     resetCurrentView();
   }
@@ -114,6 +120,8 @@ export const useGatewayThreadViewStore = defineStore("gateway-thread-view", () =
     threadViews,
     subAgentPanels,
     viewEpoch,
+    newThreadDraftActive,
+    newThreadDraftToken,
     currentThread,
     history,
     events,

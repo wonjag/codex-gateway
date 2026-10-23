@@ -15,14 +15,19 @@ export const useGatewayCatalogStore = defineStore("gateway-catalog", () => {
   const projects = ref<ProjectRecord[]>([]);
   const projectDirectoryAvailability = ref<Record<number, ProjectDirectoryAvailability>>({});
   const models = ref<ModelRecord[]>([]);
+  const defaultModelProvider = ref<string | null>(null);
   const modelsHostId = ref<number | null>(null);
   const loadingModels = ref(false);
   const hostConnectionStatuses = ref<
     Record<number, { status: HostConnectionStatus; message?: string | null; updatedAt?: number }>
   >({});
-  const defaultModel = computed(
-    () => models.value.find((model) => model.isDefault === true) ?? models.value[0] ?? null,
-  );
+  const defaultModel = computed(() => {
+    const providerModels = models.value.filter(
+      (model) =>
+        defaultModelProvider.value === null || model.modelProvider === defaultModelProvider.value,
+    );
+    return providerModels.find((model) => model.isDefault === true) ?? providerModels[0] ?? null;
+  });
 
   function setHostConnectionStatus(
     hostId: number,
@@ -40,6 +45,7 @@ export const useGatewayCatalogStore = defineStore("gateway-catalog", () => {
     projects.value = [];
     projectDirectoryAvailability.value = {};
     models.value = [];
+    defaultModelProvider.value = null;
     modelsHostId.value = null;
     loadingModels.value = false;
     hostConnectionStatuses.value = {};
@@ -50,6 +56,7 @@ export const useGatewayCatalogStore = defineStore("gateway-catalog", () => {
     projects,
     projectDirectoryAvailability,
     models,
+    defaultModelProvider,
     modelsHostId,
     loadingModels,
     hostConnectionStatuses,

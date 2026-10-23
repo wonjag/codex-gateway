@@ -62,11 +62,15 @@ export function buildTurnStartParams(
 }
 
 export function buildThreadStartParams(
-  input: Pick<TurnStartInput, "cwd" | "model" | "effort" | "summary" | "approvalPolicy">,
+  input: Pick<
+    TurnStartInput,
+    "cwd" | "model" | "modelProvider" | "effort" | "summary" | "approvalPolicy"
+  >,
 ) {
   return {
     cwd: input.cwd === "" ? undefined : input.cwd,
     model: input.model === "" ? undefined : input.model,
+    modelProvider: input.modelProvider ?? undefined,
     approvalPolicy: input.approvalPolicy ?? undefined,
     // thread/start has no top-level effort/summary fields. Its official per-thread config overlay
     // also covers Goal-only sessions before the first explicit turn/start; it never writes TOML.
@@ -98,6 +102,9 @@ export function extractThreadSettings(source: unknown): ThreadSettingsState {
   const sourceRecord = recordFromUnknown(source);
   const threadSettings = recordFromUnknown(sourceRecord?.threadSettings);
   const currentProtocolSettings = threadSettingsFromAppServer(threadSettings);
+  const modelProvider =
+    sourceRecord?.modelProvider ?? recordFromUnknown(sourceRecord?.thread)?.modelProvider;
+  const providerSettings = typeof modelProvider === "string" ? { modelProvider } : {};
   // Since Codex 0.156.1, thread/resume exposes collaborationMode at the response root. It is the
   // authoritative persisted mode; history notifications describe runtime changes and must not be
   // replayed to reconstruct a resume response. Keep the nested field only for other protocol DTOs.
@@ -105,14 +112,17 @@ export function extractThreadSettings(source: unknown): ThreadSettingsState {
     sourceRecord?.collaborationMode,
   );
   if (currentProtocolSettings !== null) {
-    return resumedCollaborationMode === null
-      ? currentProtocolSettings
-      : { ...currentProtocolSettings, collaborationMode: resumedCollaborationMode };
+    return {
+      ...currentProtocolSettings,
+      ...providerSettings,
+      ...(resumedCollaborationMode === null ? {} : { collaborationMode: resumedCollaborationMode }),
+    };
   }
   const model = threadSettings?.model ?? sourceRecord?.model;
   const effort = threadSettings?.effort ?? sourceRecord?.reasoningEffort;
   return {
     model: typeof model === "string" ? model : null,
+    ...providerSettings,
     effort: typeof effort === "string" ? effort : null,
     approvalPolicy: normalizeApprovalPolicy(
       threadSettings?.approvalPolicy ?? sourceRecord?.approvalPolicy,

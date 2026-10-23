@@ -103,6 +103,7 @@ const tmuxSessionsSnapshotFields = {
 const threadSettingsSchema = z
   .object({
     model: nullableString,
+    modelProvider: nullableString,
     effort: nullableString,
     summary: reasoningSummarySchema.nullable().optional(),
     approvalPolicy: z.enum(["untrusted", "on-request", "never"]).nullable().optional(),
@@ -401,6 +402,7 @@ const agentProjectDefaultsSchema = z
   .object({
     provider: z.literal("codex"),
     model: z.string().nullable(),
+    modelProvider: nullableString,
     effort: z.string().nullable(),
   })
   .strict();

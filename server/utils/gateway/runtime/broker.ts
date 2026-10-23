@@ -9,6 +9,7 @@ import {
   parseThreadAttachmentAddResponse,
   parseThreadAttachmentsPage,
   parseThreadAttachmentRemoveResponse,
+  parseThreadStartResult,
 } from "~~/shared/runtime/app-server";
 import { INITIAL_TURN_PAGE_LIMIT } from "~~/shared/config";
 import type { ServerRequestResponseInput, TurnStartInput, TurnSteerInput } from "./types";
@@ -24,6 +25,8 @@ import type { ThreadForkInput } from "../state/thread-forks";
 import { McpRuntimeService } from "./mcp-runtime";
 import { AppServerFileService } from "./app-server-files";
 import { providerAdapterFor } from "../agent/provider-registry";
+import { resolveNewThreadModelSelection } from "./thread-model-routing";
+import { assertThreadModelProvider } from "./model-route-errors";
 
 class ThreadBroker {
   private readonly registry = new ControllerRegistry();
@@ -63,16 +66,28 @@ class ThreadBroker {
     providerId: AgentProviderId = "codex",
   ) {
     const client = await this.registry.getHostClient(host, providerId);
+    const selection = await resolveNewThreadModelSelection(client, host.id, params);
     // Paginated history is the current App Server storage model that can hydrate indexed Turn
     // pages without replaying an entire rollout JSONL. Keep this policy at the protocol boundary so
     // every Gateway-created thread uses it and browser DTOs do not need to expose storage details.
     const result = await client.request("thread/start", {
       ...params,
+      ...selection,
       historyMode: "paginated",
       // This official opt-in is fixed at thread creation and cannot be enabled by thread/resume.
       // It exposes exact per-response usage metadata without changing persisted rollout history.
       experimentalRawEvents: true,
     });
+    const parsed = parseThreadStartResult(result);
+    try {
+      assertThreadModelProvider(selection.modelProvider, parsed.raw.modelProvider);
+      assertThreadModelProvider(parsed.raw.modelProvider, parsed.thread.modelProvider);
+    } catch (error) {
+      // thread/start subscribed this Host connection before any controller exists. Drop that
+      // subscription on an invalid response; never expose a silently misrouted thread to the UI.
+      await client.request("thread/unsubscribe", { threadId: parsed.thread.id });
+      throw error;
+    }
     const started = this.openService.startedThreadResult(host, projectId, result);
     await this.registry.retainStartedThreadSubscription(host, started.threadId, providerId);
     return started.result;
@@ -90,6 +105,10 @@ class ThreadBroker {
     return this.turnCommands.readThreadWorkspace(host, threadId);
   }
 
+  validateThreadModelSelection(host: HostRecord, threadId: string, input: ThreadSettingsState) {
+    return this.settings.validateThreadModelSelection(host, threadId, input);
+  }
+
   startQueuedTurn(
     host: HostRecord,
     threadId: string,
@@ -103,7 +122,7 @@ class ThreadBroker {
     host: HostRecord,
     threadId: string,
     input: TurnSteerInput,
-    queued?: { cwd: string; onDispatch: () => boolean },
+    queued?: { cwd: string; modelProvider?: string | null; onDispatch: () => boolean },
   ) {
     return this.turnCommands.steerTurn(host, threadId, input, queued);
   }
@@ -128,7 +147,7 @@ class ThreadBroker {
     host: HostRecord,
     threadId: string,
     turnId: string,
-    input: Pick<ThreadSettingsState, "model" | "effort" | "summary">,
+    input: Pick<ThreadSettingsState, "model" | "modelProvider" | "effort" | "summary">,
   ) {
     return this.settings.updateTurnSettings(host, threadId, turnId, input);
   }

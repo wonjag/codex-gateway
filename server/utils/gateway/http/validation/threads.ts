@@ -51,6 +51,7 @@ export const threadRenameSchema = z.object({
 
 export const threadSettingFields = {
   model: z.string().trim().nullable().optional(),
+  modelProvider: z.string().trim().min(1).nullable().optional(),
   effort: z.string().trim().min(1).nullable().optional(),
   summary: reasoningSummarySchema.nullable().optional(),
   approvalPolicy: z.enum(["untrusted", "on-request", "never"]).nullable().optional(),

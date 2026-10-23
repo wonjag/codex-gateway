@@ -55,7 +55,17 @@ test("refreshes thread settings after a disconnected browser reconnects", async 
     });
 
     await page.getByTestId("model-select").click();
-    await page.getByTestId(`model-option-${changedModel}`).click();
+    const selectedModelProvider = await page
+      .getByTestId("model-select")
+      .getAttribute("data-model-provider");
+    const modelProvider =
+      selectedModelProvider === null || selectedModelProvider === ""
+        ? "default"
+        : selectedModelProvider;
+    await page
+      .getByTestId(`model-provider-group-${modelProvider}`)
+      .getByTestId(`model-option-${changedModel}`)
+      .click();
     await page.getByTestId("model-selector-close").click();
     await expect(page.getByTestId("model-select")).toContainText(changedModel, {
       ignoreCase: true,
@@ -309,11 +319,12 @@ test("fans out a real remote app-server thread to multiple browser clients acros
 
     await openThreadFromProjectOrRestoredState(secondPage, host.id, project.id, threadId);
     await expect(secondPage.getByPlaceholder("输入后续修改要求")).toBeEnabled();
-    await expect
-      .poll(async () => secondPage.getByTestId("chat-scroll-area").getByText(firstMarker).count(), {
-        timeout: AGENT_OUTPUT_TIMEOUT_MS,
-      })
-      .toBeGreaterThan(0);
+    const restoredFirstTurn = secondPage
+      .getByTestId("chat-scroll-area")
+      .getByText(firstMarker)
+      .first();
+    await revealVirtualizedChatLocator(secondPage, restoredFirstTurn);
+    await expect(restoredFirstTurn).toBeVisible();
     await secondPage.getByTestId("chat-scroll-area").evaluate((root) => {
       const viewport = root.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
       if (viewport !== null) viewport.scrollTop = viewport.scrollHeight;

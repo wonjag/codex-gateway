@@ -13,6 +13,7 @@ import { Button } from "@codex-gateway/ui/button";
 import ApprovalPolicyPicker from "@/components/chat/composer/ApprovalPolicyPicker.vue";
 import ContextUsageMeter from "@/components/chat/composer/ContextUsageMeter.vue";
 import ModelEffortPicker from "@/components/chat/composer/ModelEffortPicker.vue";
+import type { ModelSelection } from "@/utils/model-selection";
 
 defineProps<{
   uploadingAttachments: boolean;
@@ -26,13 +27,14 @@ defineProps<{
   loadingModels: boolean;
   activeModel: string;
   activeModelLabel: string;
+  activeModelProvider: string | null;
+  activeModelProviderLabel: string;
   hostDefaultModelLabel: string;
   hostDefaultEffortLabel: string;
   activeEffortValue: string;
   activeEffortCompactLabel: string;
   effortOptions: Array<{ value: ReasoningEffort; label?: string }>;
   labelEffortOption: (option: { value: ReasoningEffort; label?: string }) => string;
-  modelOptionValue: (modelOption: { model?: string; id: string }) => string;
   hasComposerInput: boolean;
   isThreadRunning: boolean;
   canInterruptTurn: boolean;
@@ -45,7 +47,7 @@ defineProps<{
 const emit = defineEmits<{
   attach: [];
   primaryAction: [];
-  selectModel: [model: string];
+  selectModel: [selection: ModelSelection];
   selectEffort: [effort: ReasoningEffort];
   selectProvider: [provider: AgentProviderId];
   updateSelectedApprovalMode: [mode: ApprovalPolicy | "custom"];
@@ -81,13 +83,14 @@ const emit = defineEmits<{
         :loading-models="loadingModels"
         :active-model="activeModel"
         :active-model-label="activeModelLabel"
+        :active-model-provider="activeModelProvider"
+        :active-model-provider-label="activeModelProviderLabel"
         :host-default-model-label="hostDefaultModelLabel"
         :host-default-effort-label="hostDefaultEffortLabel"
         :active-effort-value="activeEffortValue"
         :active-effort-compact-label="activeEffortCompactLabel"
         :effort-options="effortOptions"
         :label-effort-option="labelEffortOption"
-        :model-option-value="modelOptionValue"
         :selected-provider="selectedProvider"
         :provider-options="providerOptions"
         :can-select-provider="canSelectProvider"

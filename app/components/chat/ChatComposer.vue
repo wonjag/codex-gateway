@@ -5,12 +5,15 @@ import { Button } from "@codex-gateway/ui/button";
 import ComposerShell from "@/components/chat/composer/ComposerShell.vue";
 import { useComposerController } from "@/composables/composer/useComposerController";
 import { useGatewayThreadForkStore } from "@/stores/gateway-thread-fork";
+import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 
 const {
   activeEffortCompactLabel,
   activeEffortValue,
   activeModel,
   activeModelLabel,
+  activeModelProvider,
+  activeModelProviderLabel,
   hostDefaultModelLabel,
   hostDefaultEffortLabel,
   activePlanSummary,
@@ -35,7 +38,6 @@ const {
   isThreadRunning,
   labelEffortOption,
   loadingModels,
-  modelOptionValue,
   models,
   planModeActive,
   removeAttachment,
@@ -69,6 +71,11 @@ const {
 
 const forks = useGatewayThreadForkStore();
 const composerShell = ref<InstanceType<typeof ComposerShell> | null>(null);
+watch(
+  () => useGatewayThreadViewStore().newThreadDraftToken,
+  () => composerShell.value?.focus(),
+  { flush: "post" },
+);
 watch(
   () =>
     [
@@ -136,13 +143,14 @@ watch(
     :loading-models="loadingModels"
     :active-model="activeModel"
     :active-model-label="activeModelLabel"
+    :active-model-provider="activeModelProvider"
+    :active-model-provider-label="activeModelProviderLabel"
     :host-default-model-label="hostDefaultModelLabel"
     :host-default-effort-label="hostDefaultEffortLabel"
     :active-effort-value="activeEffortValue"
     :active-effort-compact-label="activeEffortCompactLabel"
     :effort-options="effortOptions"
     :label-effort-option="labelEffortOption"
-    :model-option-value="modelOptionValue"
     :has-composer-input="hasComposerInput"
     :is-thread-running="isThreadRunning"
     :can-interrupt-turn="canInterruptTurn"

@@ -27,6 +27,7 @@ export function requestTurnStart(input: {
       clientUserMessageId: input.clientUserMessageId,
       cwd: input.cwd ?? undefined,
       model: input.options.model === "" ? undefined : input.options.model,
+      modelProvider: input.options.modelProvider,
       effort: input.options.effort === "" ? undefined : input.options.effort,
       summary: input.options.summary,
       approvalPolicy: input.options.approvalPolicy ?? undefined,
