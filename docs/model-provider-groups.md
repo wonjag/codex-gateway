@@ -44,6 +44,11 @@ With no groups for an account/host, the native catalog appears under its configu
 provider. Providers declared only in a project configuration are not discoverable by the
 host-level model catalog.
 
+The project-page New button, sidebar New action, and `/new` open an empty draft. Choose a model
+and source in that draft; sending the first message creates the native thread with the selected
+model and provider, then sends the message. Selecting New alone does not create a thread or fix
+its source. The project home composer can also start a session with its first message.
+
 New sessions send the selected native model and provider to `thread/start`. Existing sessions
 show their actual native provider, including after refresh or a host-default change. They can
 change models within that source; choose another source when creating a new session. Gateway

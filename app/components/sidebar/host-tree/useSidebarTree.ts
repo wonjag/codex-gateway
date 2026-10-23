@@ -132,15 +132,7 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
   }
 
   function startThreadInProject(project: ProjectRecord) {
-    // The sidebar quick-start never carries a user model selection, so it must not pin the
-    // catalog default: starting without an override lets the host's own configuration decide.
-    void threadView.startThread(
-      {},
-      {
-        hostId: project.hostId,
-        projectId: project.id,
-      },
-    );
+    threadView.prepareNewThread({ hostId: project.hostId, projectId: project.id });
   }
 
   function threadRuntimeStatus(hostId: number, threadId: string) {

@@ -61,7 +61,9 @@ export function useComposerController() {
   );
   const isThreadRunning = computed(() => selectedRuntime.value?.canInterrupt === true);
   const composerInputEnabled = computed(
-    () => selectedThreadId.value !== null || selectedProjectId.value !== null,
+    () =>
+      (selectedThreadId.value !== null || selectedProjectId.value !== null) &&
+      !submit.creatingThread.value,
   );
   const selectedTurnOptions = () => {
     const effort =
@@ -70,8 +72,8 @@ export function useComposerController() {
       // Only an explicit per-thread/new-thread selection may override app-server persistence.
       // Existing-thread settings are projected from thread/resume instead of inferred here.
       model: settings.selectedModel.value === "" ? undefined : settings.selectedModel.value,
-      // Keep the native source when /new is invoked from an existing thread. Turn requests carry
-      // the same value only as an assertion; the app-server session still owns its provider.
+      // Existing turns carry the source as an assertion. Draft selections choose the source when
+      // the first message creates its native thread.
       modelProvider: settings.selectedModelProvider.value ?? undefined,
       effort,
       approvalPolicy:
@@ -99,7 +101,8 @@ export function useComposerController() {
   );
   const canSendTurn = computed(
     () =>
-      selectedThreadId.value !== null &&
+      selectedHostId.value !== null &&
+      selectedProjectId.value !== null &&
       submit.hasComposerInput.value &&
       !attachmentUpload.uploadingAttachments.value,
   );
@@ -166,9 +169,7 @@ export function useComposerController() {
       return;
     }
     event.preventDefault();
-    if (selectedThreadId.value === null) {
-      return;
-    }
+    if (!composerInputEnabled.value || attachmentUpload.uploadingAttachments.value) return;
     void submitComposer();
   }
 

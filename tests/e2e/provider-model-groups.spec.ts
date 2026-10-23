@@ -167,6 +167,130 @@ test.describe("provider model groups", () => {
     expect(invalid).toMatchObject({ type: "error", code: "MODEL_ROUTE_INVALID" });
   });
 
+  test("new-session buttons and slash new leave sources selectable until the first real message", async ({
+    page,
+    remoteWorkspace,
+  }) => {
+    test.skip(process.env.E2E_CODEX_TURN !== "1", "Requires real first-turn inference");
+    test.setTimeout(10 * 60_000);
+    await installRealtimeSocketProbe(page);
+    await openApp(page);
+    const { host, project } = await remoteWorkspace.provision({
+      hostName: `new-session-models-${Date.now()}`,
+    });
+    configuredGroups(host.id);
+    await openDraft(page, project);
+
+    for (const provider of ["sub2api", "openai"] as const) {
+      const offset = await realtimeClientMessageCount(page);
+      if (provider === "sub2api") {
+        await page.getByTestId("new-thread-button").click();
+      } else {
+        // Exercise the real sidebar entry while an existing thread is selected.
+        await page.getByTestId(`project-button-${project.id}`).click({ button: "right" });
+        await page.getByRole("menuitem", { name: "新建", exact: true }).click();
+      }
+      await assertSelectableDraft(page, project);
+      await providerOption(page, provider).click();
+      await page.getByTestId("model-selector-close").click();
+      expect(await threadCreationMessages(page, offset)).toEqual([]);
+
+      const marker = `FIRST_${provider}_${randomUUID().replaceAll("-", "")}`;
+      const prompt = `Reply exactly ${marker}. Do not use tools.`;
+      const editor = page.getByPlaceholder("输入后续修改要求");
+      await editor.fill(prompt);
+      await expect(page.getByTestId("send-turn-button")).toBeEnabled();
+      if (provider === "sub2api") await page.getByTestId("send-turn-button").click();
+      else await editor.press("Enter");
+      const threadId = await waitForSelectedThreadId(page);
+      const scope = { hostId: host.id, threadId };
+      expect(await waitForRealtimeClientMessage(page, "thread.start", offset)).toMatchObject({
+        hostId: host.id,
+        projectId: project.id,
+        model: commonModel,
+        modelProvider: provider,
+      });
+      expect(await waitForRealtimeClientMessage(page, "turn.start", offset)).toMatchObject({
+        threadId,
+        projectId: project.id,
+        model: commonModel,
+        modelProvider: provider,
+      });
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              ({ threadId, marker }) => {
+                const history = window.__codexGatewayE2e?.views.history;
+                return (
+                  history?.thread.id === threadId &&
+                  history.thread.turns.some(
+                    (turn) =>
+                      turn.status === "completed" &&
+                      turn.items.some(
+                        (item) =>
+                          item.type === "agentMessage" &&
+                          typeof item.text === "string" &&
+                          item.text.includes(marker),
+                      ),
+                  )
+                );
+              },
+              { threadId, marker },
+            ),
+          { timeout: 180_000 },
+        )
+        .toBe(true);
+      // A newly created thread has no readable rollout until its first turn is persisted.
+      // Verify native history after completion rather than racing thread/timeline/list setup.
+      const { entries } = await nativeForkTimeline(page, scope);
+      expect(entries.some((entry) => entry.type === "turnCompleted")).toBe(true);
+      expect(
+        entries.some(
+          (entry) =>
+            entry.type === "item" &&
+            entry.item.type === "agentMessage" &&
+            typeof entry.item.text === "string" &&
+            entry.item.text.includes(marker),
+        ),
+      ).toBe(true);
+      expect(await threadCreationMessages(page, offset)).toHaveLength(1);
+      await expect(editor).toHaveAttribute("data-value", "");
+      expect(await forkSettings(page, scope)).toMatchObject({
+        model: commonModel,
+        modelProvider: provider,
+      });
+      await reloadApp(page);
+      await expect(page.getByTestId("model-select")).toHaveAttribute(
+        "data-model-provider",
+        provider,
+      );
+    }
+
+    const slashOffset = await realtimeClientMessageCount(page);
+    await page.getByPlaceholder("输入后续修改要求").fill("/new");
+    await page.getByTestId("slash-command-new").click();
+    await assertSelectableDraft(page, project);
+    expect(await threadCreationMessages(page, slashOffset)).toEqual([]);
+    await page.getByTestId("model-selector-close").click();
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await openDraft(page, project);
+    await page.getByTestId("new-thread-button").click();
+    await assertSelectableDraft(page, project);
+    await providerOption(page, "sub2api").click();
+    const dialog = page.getByTestId("model-selector-dialog");
+    await expect(providerOption(page, "sub2api")).toHaveAttribute("data-model-selected", "true");
+    expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    );
+    await test.info().attach("mobile-new-session-models", {
+      body: await dialog.screenshot(),
+      contentType: "image/png",
+    });
+    await page.getByTestId("model-selector-close").click();
+  });
+
   test("completes real turns and preserves each provider across settings changes and desktop/mobile refresh", async ({
     browser,
     page,
@@ -305,6 +429,29 @@ function providerToggle(page: Page, provider: ModelProvider) {
   return page.getByTestId(`model-provider-toggle-${provider}`);
 }
 
+async function threadCreationMessages(page: Page, offset: number) {
+  return page.evaluate(
+    (start) =>
+      (window.__gatewayRealtimeProbe?.messages ?? [])
+        .slice(start)
+        .filter((message) => message.type === "thread.start"),
+    offset,
+  );
+}
+
+async function assertSelectableDraft(page: Page, project: UiProject) {
+  await expect(page.getByTestId("new-thread-draft")).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("threadId")).toBeNull();
+  expect(new URL(page.url()).searchParams.get("projectId")).toBe(String(project.id));
+  await page.getByTestId("model-select").click();
+  await expect(page.getByTestId("model-provider-lock-hint")).toHaveCount(0);
+  await page.getByTestId("model-selector-dialog").getByRole("textbox").fill(commonModel);
+  for (const provider of providers) {
+    await expect(providerOption(page, provider)).toBeVisible();
+    await expect(providerOption(page, provider)).not.toHaveAttribute("data-disabled", "");
+  }
+}
+
 function providerOption(page: Page, provider: ModelProvider): Locator {
   return page
     .getByTestId(`model-provider-group-${provider}`)
@@ -347,8 +494,12 @@ async function startProviderThread(page: Page, project: UiProject, provider: Mod
 async function startSelectedThread(page: Page, project: UiProject, provider: ModelProvider) {
   await expect(page.getByTestId("model-select")).toHaveAttribute("data-model-provider", provider);
   const offset = await realtimeClientMessageCount(page);
-  await page.getByPlaceholder("输入后续修改要求").fill("/");
-  await page.getByTestId("slash-command-new").click();
+  // Catalog and provider-lifetime checks need a real empty thread. Creation through the actual
+  // new-session buttons and first message is covered separately below.
+  await page.evaluate(async (options) => window.__codexGatewayE2e?.views.startThread(options), {
+    model: commonModel,
+    modelProvider: provider,
+  });
   const threadId = await waitForSelectedThreadId(page);
   expect(await waitForRealtimeClientMessage(page, "thread.start", offset)).toMatchObject({
     hostId: project.hostId,

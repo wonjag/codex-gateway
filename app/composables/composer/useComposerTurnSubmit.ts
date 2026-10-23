@@ -10,6 +10,7 @@ import { useGatewayComposerStore } from "@/stores/gateway-composer";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
 import { buildThreadCollaborationMode } from "@/utils/thread-collaboration-mode";
+import { messageFromError } from "@/stores/gateway/thread-utils/identity";
 
 type AttachedFile = {
   name: string;
@@ -50,13 +51,15 @@ export function useComposerTurnSubmit(input: {
 
   async function startNewThread() {
     input.clearDraft();
-    await threadView.startThread(input.selectedTurnOptions());
+    threadView.prepareNewThread();
   }
 
   const submitting = ref(false);
+  const creatingThread = ref(false);
   async function submitTurn(insert = false) {
     if (submitting.value) return;
-    const text = input.turnText.value.trim();
+    const draftText = input.turnText.value;
+    const text = draftText.trim();
     if (!text && !input.attachedFiles.value.length) return;
     if (planModeActive.value) {
       composer.dismissLatestSelectedPlanPrompt();
@@ -64,35 +67,61 @@ export function useComposerTurnSubmit(input: {
     const files = [...input.attachedFiles.value];
     const remoteFiles = files.filter((file) => !file.isImage);
     const attachedImages = files.filter((file) => file.isImage);
-    const references = input.fileReferences.value.map(({ type, path, name }) => ({
+    const draftReferences = [...input.fileReferences.value];
+    const references = draftReferences.map(({ type, path, name }) => ({
       type,
       path,
       name,
     }));
     const collaborationMode = composer.selectedThreadSettings.collaborationMode ?? undefined;
+    const options = input.selectedTurnOptions();
     const navigation = useGatewayNavigationStore();
-    const {
-      selectedHostId: hostId,
-      selectedThreadId: threadId,
-      selectedProjectId: projectId,
-    } = navigation;
-    if (hostId === null || threadId === null || projectId === null) return;
-    const queue = useGatewayTurnQueueStore();
-    const runtime = useGatewayThreadRuntimeStore();
-    const running = runtime.statusFor(hostId, threadId) === "running";
-    const expectedTurnId = runtime.activeTurnIdsByThreadKey[`${hostId}:${threadId}`];
-    const shouldQueue =
-      insert || running || (queue.queues[`${hostId}:${threadId}`]?.length ?? 0) > 0;
-    const send = !shouldQueue
-      ? threadTurns.sendTurn
-      : (text: string, options: ComposerTurnOptions) =>
-          queue.enqueue(hostId, threadId, projectId, text, options, insert ? expectedTurnId : null);
+    const { selectedHostId: hostId, selectedProjectId: projectId } = navigation;
+    let threadId = navigation.selectedThreadId;
+    if (hostId === null || projectId === null || (insert && threadId === null)) return;
     submitting.value = true;
     try {
+      if (threadId === null) {
+        creatingThread.value = true;
+        threadId = await threadView.startThread(options);
+        // Navigating or logging out while creation is in flight must never send the first
+        // message to the newly selected session. startThread also fences stale view responses.
+        if (
+          threadId === null ||
+          navigation.selectedHostId !== hostId ||
+          navigation.selectedProjectId !== projectId ||
+          navigation.selectedThreadId !== threadId
+        ) {
+          return;
+        }
+        // Selection hydrates the per-thread composer. Transfer the submitted draft to that real
+        // thread so a rejected first turn keeps its text, attachments, and references for retry.
+        input.turnText.value = draftText;
+        input.attachedFiles.value = files;
+        input.fileReferences.value = draftReferences;
+      }
+      const targetThreadId = threadId;
+      const queue = useGatewayTurnQueueStore();
+      const runtime = useGatewayThreadRuntimeStore();
+      const running = runtime.statusFor(hostId, targetThreadId) === "running";
+      const expectedTurnId = runtime.activeTurnIdsByThreadKey[`${hostId}:${targetThreadId}`];
+      const shouldQueue =
+        insert || running || (queue.queues[`${hostId}:${targetThreadId}`]?.length ?? 0) > 0;
+      const send = !shouldQueue
+        ? threadTurns.sendTurn
+        : (text: string, turnOptions: ComposerTurnOptions) =>
+            queue.enqueue(
+              hostId,
+              targetThreadId,
+              projectId,
+              text,
+              turnOptions,
+              insert ? expectedTurnId : null,
+            );
       const accepted = await send(
         messageWithFileReferences(text, remoteFiles, input.fileReferencesLabel.value),
         {
-          ...input.selectedTurnOptions(),
+          ...options,
           collaborationMode,
           images: attachedImages
             .map((file) => ({ url: file.dataUrl, detail: "auto" as const }))
@@ -108,7 +137,13 @@ export function useComposerTurnSubmit(input: {
         input.turnText.value.trim() === text
       )
         input.clearDraft();
+    } catch (error: unknown) {
+      gateway.setError(
+        messageFromError(error, gateway.t("app.sendMessageFailed"), gateway.errorLabels),
+        { hostId, projectId, threadId },
+      );
     } finally {
+      creatingThread.value = false;
       submitting.value = false;
     }
   }
@@ -145,6 +180,7 @@ export function useComposerTurnSubmit(input: {
     hasComposerInput,
     interruptingTurn,
     submitting,
+    creatingThread,
     activatePlanMode,
     deactivatePlanMode,
     startNewThread,

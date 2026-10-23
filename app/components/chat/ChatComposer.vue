@@ -5,6 +5,7 @@ import { Button } from "@codex-gateway/ui/button";
 import ComposerShell from "@/components/chat/composer/ComposerShell.vue";
 import { useComposerController } from "@/composables/composer/useComposerController";
 import { useGatewayThreadForkStore } from "@/stores/gateway-thread-fork";
+import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 
 const {
   activeEffortCompactLabel,
@@ -70,6 +71,11 @@ const {
 
 const forks = useGatewayThreadForkStore();
 const composerShell = ref<InstanceType<typeof ComposerShell> | null>(null);
+watch(
+  () => useGatewayThreadViewStore().newThreadDraftToken,
+  () => composerShell.value?.focus(),
+  { flush: "post" },
+);
 watch(
   () =>
     [

@@ -81,9 +81,11 @@ export function useThreadSettingsControls() {
     return firstNonEmptyString([record?.providerDisplayName, activeModelProvider.value]) ?? "";
   });
 
-  watch([selectedHostId, selectedProjectId], () => {
+  watch([selectedHostId, selectedProjectId, () => threadView.newThreadDraftToken], () => {
     newThreadModel.value = "";
     newThreadModelProvider.value = null;
+    newThreadEffort.value = "default";
+    newThreadApprovalMode.value = "custom";
   });
 
   watch(

@@ -12,6 +12,7 @@ import MisalignmentRecoveryCard from "@/components/thread/MisalignmentRecoveryCa
 import McpRuntimeStatusBar from "@/components/thread/McpRuntimeStatusBar.vue";
 import ThreadForkOrigin from "@/components/thread/ThreadForkOrigin.vue";
 import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
+import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { projectById } from "@/stores/gateway-catalog/selectors";
 import { titleForThread } from "@/stores/gateway/thread-utils/identity";
@@ -36,6 +37,7 @@ const {
   selectedThreadViewReady,
 } = useChatWorkspaceState();
 const threadTurns = useGatewayThreadTurnsStore();
+const { newThreadDraftActive } = storeToRefs(useGatewayThreadViewStore());
 const catalog = useGatewayCatalogStore();
 const { projects } = storeToRefs(catalog);
 const allowFork = computed(
@@ -149,7 +151,16 @@ const { copySessionPath } = useCopySessionPath({
       />
 
       <ChatPanelScrollArea v-else-if="selectedProjectId">
-        <ProjectThreadList />
+        <div
+          v-if="newThreadDraftActive"
+          data-testid="new-thread-draft"
+          class="mx-auto w-full max-w-4xl"
+        >
+          <h2 class="text-2xl font-semibold text-ink">{{ t("app.newThread") }}</h2>
+          <p class="mt-2 text-sm text-ink-muted">{{ selectedProject?.name }}</p>
+          <p class="mt-4 text-sm text-ink-secondary">{{ t("app.newThreadDraftHint") }}</p>
+        </div>
+        <ProjectThreadList v-else />
       </ChatPanelScrollArea>
 
       <ChatPanelScrollArea v-else class="flex items-start">

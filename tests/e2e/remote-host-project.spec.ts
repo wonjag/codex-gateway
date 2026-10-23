@@ -71,6 +71,8 @@ test("new threads display and inherit the remote Codex defaults", async ({
   const offset = await realtimeClientMessageCount(page);
   await page.getByPlaceholder("输入后续修改要求").fill("/");
   await page.getByTestId("slash-command-new").click();
+  await expect(page.getByTestId("new-thread-draft")).toBeVisible();
+  await page.evaluate(async () => window.__codexGatewayE2e?.views.startThread());
   const threadStart = z
     .object({
       hostId: z.number(),
@@ -321,6 +323,8 @@ test("connects to a real SSH Codex host and lists a project thread created by ap
   await expect(page.getByTestId("slash-command-new")).toBeVisible();
   await expect(page.getByTestId("slash-command-plan")).toBeHidden();
   await page.getByTestId("slash-command-new").click();
+  await expect(page.getByTestId("new-thread-draft")).toBeVisible();
+  await page.evaluate(async () => window.__codexGatewayE2e?.views.startThread());
   const slashNewThreadId = await waitForSelectedThreadId(page);
   await expect(page.getByTestId(`thread-button-${slashNewThreadId}`)).toBeVisible({
     timeout: 30_000,

@@ -243,9 +243,10 @@ export async function startRemoteThreadFromProjectMenu(
   const previousThreadId = new URL(page.url()).searchParams.get("threadId");
   await page.getByTestId(`project-button-${projectId}`).click({ button: "right" });
   await page.getByRole("menuitem", { name: /新建/ }).click();
-  // The route still points at the previous thread for a short time after the menu click. Waiting
-  // only for a non-empty threadId can therefore return the old running thread and make the next
-  // user action target it. A successful new-thread action must select a different thread.
+  await expect(page.getByTestId("new-thread-draft")).toBeVisible();
+  // Scenario fixtures need a real empty native thread without spending a model turn. The UI now
+  // defers creation until the first send; its actual button/send path has separate E2E coverage.
+  await page.evaluate(async () => window.__codexGatewayE2e?.views.startThread());
   const threadId = await waitForSelectedThreadId(page, previousThreadId);
   await expect(page.getByPlaceholder("输入后续修改要求")).toBeEnabled();
   await expect(page.getByTestId(`thread-button-${threadId}`)).toBeVisible({ timeout: 30_000 });
