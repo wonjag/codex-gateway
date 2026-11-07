@@ -199,6 +199,20 @@ if [ -n "${E2E_NAS_ROOT:-}" ]; then
     exit 2
   fi
   mkdir -p "$E2E_NAS_RUN_DIR"/{workspace,build-output,gateway-tmp}
+  # Keep multi-version standalone/daemon packages and upgrade archives off the local
+  # Docker layer. Auth, sockets and SQLite remain in each disposable container.
+  mkdir -p "$E2E_NAS_RUN_DIR/ssh-runtime"
+  export E2E_NAS_SSH_RUNTIME_DIR
+  E2E_NAS_SSH_RUNTIME_DIR="$(mktemp -d "$E2E_NAS_RUN_DIR/ssh-runtime/run.XXXXXXXX")"
+  for runtime_fixture in core legacy npm mfa; do
+    for runtime_directory in packages cache; do
+      runtime_path="$E2E_NAS_SSH_RUNTIME_DIR/$runtime_fixture/$runtime_directory"
+      mkdir -p "$runtime_path"
+      # These mounts contain public release artifacts only. The run parent stays 0700;
+      # writable mount roots support the non-root SSH user on managed bind proxies.
+      chmod 0777 "$runtime_path"
+    done
+  done
   # Managed Docker bind proxies require host directories to exist before container creation.
   mkdir -p "$project_dir/test-results"
   # Keep SQLite WAL and small runtime state on a local filesystem. A bind mount also works
@@ -349,6 +363,11 @@ fi
 gateway_heavy_job_check_space /
 "${compose[@]}" up -d --wait \
   gateway-under-test browser-preview-ingress
+# Some managed Docker image importers strip setuid bits. The MFA scenario uses
+# the fixture's real sudo to terminate an unauthenticated SSH child.
+for ssh_fixture in "${ssh_fixtures[@]}"; do
+  "${compose[@]}" exec -T "$ssh_fixture" chmod 4755 /usr/bin/sudo
+done
 "${compose[@]}" run --rm test-runner \
   bash -lc 'set -euo pipefail
     if [ "${E2E_NAS_MODE:-}" = "1" ]; then

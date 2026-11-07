@@ -158,7 +158,7 @@ test("opening an idle app-server thread clears stale in-progress history", async
       },
     },
   });
-  await seedGatewayThread(page, { projectId: 1, threadId });
+  await seedGatewayThread(page, { projectId: 1, threadId: null });
 
   await openThreadInStore(page, { threadId, hostId: 1, projectId: 1 });
 

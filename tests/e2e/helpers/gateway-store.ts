@@ -127,10 +127,12 @@ export async function seedGatewayThread(page: Page, input: SeedGatewayThreadInpu
         : projectId !== null
           ? [input.defaultProject]
           : [];
-    navigation.threads = input.threads ?? [];
     navigation.selectedHostId = hostId;
     navigation.selectedProjectId = projectId;
     navigation.selectedThreadId = threadId;
+    // Host/project selection synchronously clears the previous workspace's list.
+    // Seed this workspace's rows after selecting its scope, as a real load does.
+    navigation.threads = input.threads ?? [];
     const hasThread = threadId !== null && threadId !== "";
     views.currentThread = hasThread ? input.currentThread : null;
     views.setHistory(input.history ?? (hasThread ? input.defaultHistory : null));

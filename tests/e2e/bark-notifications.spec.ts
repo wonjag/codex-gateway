@@ -129,16 +129,24 @@ test("plan-mode user questions render and notify through Sonner and Bark", async
     );
   await page.getByTestId("send-turn-button").click();
 
-  const requestCard = page.getByTestId("chat-scroll-area").getByText(question, { exact: true });
+  const chat = page.getByTestId("chat-scroll-area");
+  const questionText = chat.getByText(question, { exact: true });
   const requestToast = page.locator("[data-sonner-toast]").filter({ hasText: "等待回答" });
   await Promise.all([
-    expect(requestCard).toBeVisible({ timeout: AGENT_OUTPUT_TIMEOUT_MS }),
+    expect(questionText.first()).toBeVisible({ timeout: AGENT_OUTPUT_TIMEOUT_MS }),
     expect(requestToast).toBeVisible({ timeout: AGENT_OUTPUT_TIMEOUT_MS }),
   ]);
-  // The app-server keeps an async question in both agentMessage.text and
-  // agentMessage.questions. The UI must expose only the structured card, not
-  // render the protocol summary as a second plain-text question.
-  await expect(requestCard).toHaveCount(1);
+  // A native request can repeat the question in its header and body. Assert one
+  // answer form and no Markdown question summary instead of counting both labels.
+  await expect(
+    chat
+      .getByTestId("async-user-question-submit")
+      .or(chat.getByTestId("request-user-input-submit")),
+  ).toHaveCount(1);
+  for (const option of ["方案 A", "方案 B"]) {
+    await expect(chat.getByRole("button", { name: option, exact: true })).toHaveCount(1);
+  }
+  await expect(questionText.and(chat.locator("p"))).toHaveCount(0);
   await expect.poll(async () => (await bark.readRequests()).length, { timeout: 30_000 }).toBe(1);
   const request = (await bark.readRequests())[0];
   expect(request?.title).toContain("等待回答");

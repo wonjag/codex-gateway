@@ -584,7 +584,17 @@ test("opens sidebar context actions with long press on mobile", async ({
   await expect(page.getByTestId(`project-button-${project.id}`)).toBeVisible();
   await longPress(page, page.getByTestId(`project-button-${project.id}`));
   await page.getByRole("menuitem", { name: /新建/ }).click();
+  await expect(page.getByTestId("new-thread-draft")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator('[data-slot="sheet-overlay"]')).toBeHidden();
+  await page
+    .getByPlaceholder("输入后续修改要求")
+    .fill("Reply with MOBILE_CONTEXT_READY. Do not use tools or inspect files.");
+  await page.getByTestId("send-turn-button").click();
   const threadId = await waitForSelectedThreadId(page);
+  await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", "已完成", {
+    timeout: 180_000,
+  });
 
   await page.getByTestId("mobile-sidebar-toggle").click();
   await page.getByTestId(`project-button-${project.id}`).click();

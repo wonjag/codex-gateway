@@ -121,8 +121,8 @@ const threadItemSchema = z
   })
   .loose();
 
-// Follow the App Server wire enum, not internal CodexErrorDetails variants. In 0.160.0 the new
-// ContentFilter detail maps to "other" upstream; adding it here would invent a protocol value.
+// Follow the 0.167.0 wire enum, including its open string/object error details.
+// Keep unknown details intact so a new error category cannot hide a terminal turn.
 const codexErrorInfoSchema = z.union([
   z.enum([
     "contextWindowExceeded",
@@ -131,6 +131,8 @@ const codexErrorInfoSchema = z.union([
     "rateLimitExceeded",
     "flexUnavailable",
     "serverOverloaded",
+    "modelNotFound",
+    "policyCapacityUnavailable",
     "cyberPolicy",
     "misalignmentPolicyViolation",
     "tooManyDenials",
@@ -154,11 +156,16 @@ const codexErrorInfoSchema = z.union([
   z.object({
     activeTurnNotSteerable: z.object({ turnKind: z.enum(["review", "compact"]) }).strict(),
   }),
+  z.string(),
+  z.record(z.string(), z.unknown()),
 ]);
 
 export const threadTurnSchema = z
   .object({
     id: z.string().min(1),
+    // Nullable/absent in historical turns and review/start responses. This is lineage,
+    // not the identity used to route events or deduplicate a submission.
+    rootTurnId: z.string().nullable().optional(),
     items: z.array(threadItemSchema),
     itemsView: z.enum(["notLoaded", "summary", "full"]),
     status: z.enum(["completed", "interrupted", "failed", "inProgress"]),
@@ -171,6 +178,7 @@ export const threadTurnSchema = z
           .object({
             errorType: z.string().nullable(),
             detailedExplanation: z.string().nullable(),
+            reviewTarget: z.string().nullable().optional(),
             steer: z.object({ message: z.string() }).strict().nullable(),
           })
           .strict()

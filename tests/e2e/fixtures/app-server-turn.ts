@@ -7,6 +7,7 @@ export type AppServerTurnFixture = Pick<AppServerTurn, "id"> &
 
 export function appServerTurnFixture(fixture: AppServerTurnFixture): AppServerTurn {
   return {
+    rootTurnId: null,
     items: [],
     itemsView: "full",
     status: "inProgress",

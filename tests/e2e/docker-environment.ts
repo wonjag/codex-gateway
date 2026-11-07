@@ -192,6 +192,12 @@ async function prepareRemoteCodexHome(env: RemoteEnv) {
     }
     await execTestSsh(connection, "rm -rf /home/codex/.codex && mkdir -p /home/codex/.codex");
     await uploadDirectory(connection, codexHome, "/home/codex/.codex");
+    if (process.env.E2E_NAS_MODE === "1") {
+      await execTestSsh(
+        connection,
+        "test -w /e2e-packages && test -w /home/codex/.cache && ln -s /e2e-packages /home/codex/.codex/packages",
+      );
+    }
     if (env.runtimeFixture === "current-codex") {
       // Codex auth/config is uploaded into CODEX_HOME, so restore the standalone fixture after:
       // the actual package intentionally lives beside those files in the official layout.

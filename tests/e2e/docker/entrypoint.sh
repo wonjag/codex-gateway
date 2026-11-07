@@ -3,6 +3,7 @@ set -euo pipefail
 
 mkdir -p /home/codex/.ssh /home/codex/.codex /workspace
 mkdir -p /home/codex/.local
+chown codex:"$(id -gn codex)" /home/codex
 chmod 700 /home/codex/.ssh
 chown -R codex:"$(id -gn codex)" /home/codex/.ssh /home/codex/.local /home/codex/.codex
 
