@@ -99,6 +99,8 @@ export class CodexRpcClient extends EventEmitter<CodexRpcClientEvents> {
         },
         capabilities: {
           experimentalApi: true,
+          // Read receipts are owned by Codex; Gateway has no unread-state projection.
+          optOutNotificationMethods: ["thread/readState/changed"],
           // Codex negotiates MCP extensions by their protocol names. Gateway renders
           // OpenAI forms and the current MCP elicitation form capability. These are independent
           // protocol extensions, not compatibility branches for older app-server versions.

@@ -46,8 +46,10 @@ test("toggles an expanded project closed from the desktop sidebar", async ({ pag
     if (!driver) throw new Error("Gateway E2E driver is unavailable");
     driver.catalog.selectProject = async (projectId: number) => {
       const { navigation } = driver;
+      const threads = navigation.threads;
       navigation.selectedProjectId = projectId;
       navigation.selectedThreadId = null;
+      navigation.threads = threads;
     };
   });
 
