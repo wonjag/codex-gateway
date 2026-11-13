@@ -1,4 +1,5 @@
 import { EventEmitter } from "@posva/event-emitter";
+import { parseRpcResponse } from "~~/shared/rpc-response-error";
 import type { HostRecord, RpcEnvelope } from "~~/shared/types";
 import { parseRpcEnvelope } from "~~/shared/runtime/app-server";
 import { SUPPORTED_CODEX_VERSION } from "../codex/codex-version";
@@ -177,7 +178,9 @@ export class CodexRpcClient extends EventEmitter<CodexRpcClientEvents> {
     const response = this.requests.request(method, params, timeoutMs, (message) =>
       this.send(message),
     );
-    return parse === undefined ? response : response.then(parse);
+    return parse === undefined
+      ? response
+      : response.then((value) => parseRpcResponse(method, value, parse));
   }
 
   notify(method: string, params: unknown) {

@@ -125,7 +125,7 @@ export class AppServerRuntimeProbe {
         const read = await client.request("thread/read", { threadId, includeTurns: false }, 30_000);
         const record = recordFromUnknown(read);
         const thread = appServerThreadFromUnknown(record?.thread);
-        if (isActiveThreadStatus(thread?.status ?? record?.status)) {
+        if (isActiveThreadStatus(thread?.status ?? recordFromUnknown(record?.thread)?.status)) {
           return true;
         }
       }

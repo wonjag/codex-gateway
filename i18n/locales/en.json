@@ -369,6 +369,7 @@
     "listModelsFailed": "Failed to list models",
     "openThreadFailed": "Failed to open thread",
     "openTerminalFailed": "Failed to open terminal",
+    "turnDeliveryUncertain": "Codex received the request, but its response is incompatible with Gateway. Checking native thread state; do not resend.",
     "sendMessageFailed": "Failed to send message",
     "sendSteerFailed": "Failed to send steer message",
     "interruptTurnFailed": "Failed to stop generation",

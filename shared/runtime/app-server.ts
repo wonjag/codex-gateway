@@ -281,6 +281,8 @@ export const appServerThreadSchema = z
     extra: z.object({}).strict().nullable(),
     sessionId: z.string().min(1),
     forkedFromId: z.string().nullable(),
+    // Attached ownership is independent of fork and spawn lineage.
+    attachedToThreadId: z.string().nullable().optional(),
     parentThreadId: z.string().nullable(),
     preview: z.string(),
     ephemeral: z.boolean(),

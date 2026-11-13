@@ -369,6 +369,7 @@
     "listModelsFailed": "读取模型失败",
     "openThreadFailed": "打开会话失败",
     "openTerminalFailed": "打开终端失败",
+    "turnDeliveryUncertain": "Codex 已收到请求，但返回数据与 Gateway 协议不兼容。正在核对原生会话状态；请勿重复发送。",
     "sendMessageFailed": "发送消息失败",
     "sendSteerFailed": "追加消息失败",
     "interruptTurnFailed": "停止生成失败",
