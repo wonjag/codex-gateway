@@ -1,4 +1,5 @@
 import type { ComposerTurnOptions } from "~~/shared/types";
+import { isTurnDeliveryUncertain } from "~~/shared/rpc-response-error";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { useGatewayComposerStore } from "@/stores/gateway-composer";
@@ -114,12 +115,21 @@ export async function sendTurn(
   } catch (error: unknown) {
     if (!sessionIsCurrent()) return false;
     useGatewayThreadTurnsStore().clearRequest(hostId, threadId);
-    gateway.setError(messageFromError(error, t("app.sendMessageFailed"), errorMessageLabels(t)), {
-      hostId,
-      projectId,
-      threadId,
-    });
-    if (!shouldSteerActiveTurn) {
+    gateway.setError(
+      isTurnDeliveryUncertain(error)
+        ? t("app.turnDeliveryUncertain")
+        : messageFromError(error, t("app.sendMessageFailed"), errorMessageLabels(t)),
+      {
+        hostId,
+        projectId,
+        threadId,
+      },
+    );
+    if (isTurnDeliveryUncertain(error)) {
+      // The upstream accepted this mutation. Preserve live lifecycle state and reconcile
+      // from the native snapshot; never make the optimistic request terminal or resend it.
+      await views.recoverThreadEventGap(hostId, threadId);
+    } else if (!shouldSteerActiveTurn) {
       runtimeStore.setThreadStatus(hostId, threadId, "completed");
     }
     return false;

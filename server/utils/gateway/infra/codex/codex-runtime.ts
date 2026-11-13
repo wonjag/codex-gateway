@@ -113,11 +113,16 @@ export class CodexRuntimeService {
         };
       }
 
-      if (cliVersionSupported && runtimeVersionSupported) {
+      // A healthy managed daemon is authoritative. Do not restart running native work
+      // merely because a separate proxy/CLI installation has not been upgraded.
+      if (runtimeVersionSupported && (runtimeState.running || cliVersionSupported)) {
         hostLifecycleBus.emit({
           hostId: host.id,
           status: "connecting",
-          message: `${hostDisplayName(host)} 的远端 Codex 已是最新版本 ${beforeVersion}`,
+          message:
+            currentRuntimeVersion === supportedVersion
+              ? `${hostDisplayName(host)} 的 app-server ${currentRuntimeVersion} 与 Gateway 协议基准一致`
+              : `${hostDisplayName(host)} 的 app-server ${currentRuntimeVersion} 高于 Gateway 已验证协议 ${supportedVersion}，未保证兼容；遇到协议错误请更新 Gateway`,
         });
         return {
           version: beforeVersion,

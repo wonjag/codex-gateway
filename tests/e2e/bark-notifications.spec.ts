@@ -37,6 +37,9 @@ test("Bark sends ordinary turn notifications and only notifies when an app-serve
     hostId: host.id,
     threadId,
     objective: "验证 Bark 只在目标整体结束时通知",
+    // Creating an active goal now immediately starts native autonomous work. Keep this
+    // notification test paused until its explicit terminal transition.
+    status: "paused",
     tokenBudget: null,
   });
   await expect(page.getByTestId("composer-mode-strip").getByText("目标").first()).toBeVisible({
